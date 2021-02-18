@@ -4,7 +4,7 @@ OPENSSL_VERSION=3.0.0-alpha11
 PCRE_VERSION=8.44
 NGX_PAGESPEED_VERSION=1.14.33.1-RC1
 
-echo $NGINX_VERSION > NGINX_VERSION
+echo -e "$NGINX_VERSION\c" > NGINX_VERSION
 
 # download & patch
 curl https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz | tar -xz && cd nginx-$NGINX_VERSION
