@@ -24,7 +24,6 @@ git clone https://github.com/vision5/ngx_devel_kit
 git clone https://github.com/cloudflare/zlib
 
 curl https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz | tar -xz
-
 curl https://ftp.pcre.org/pub/pcre/pcre-$PCRE_VERSION.tar.gz | tar -xz
 
 # pagespeed
