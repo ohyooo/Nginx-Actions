@@ -7,6 +7,7 @@ NGX_PAGESPEED_VERSION=1.14.33.1-RC1
 echo -e "nginx-$NGINX_VERSION\c" > NGINX_VERSION
 
 # download & patch
+echo "nginx version $NGINX_VERSION"
 curl https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz | tar -xz && cd nginx-$NGINX_VERSION
 
 wget https://raw.githubusercontent.com/kn007/patch/master/nginx.patch
