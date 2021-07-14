@@ -18,11 +18,11 @@ patch -p1 < use_openssl_md5_sha1.patch
 # download lib
 mkdir modules && cd modules
 
-git clone https://github.com/google/ngx_brotli && cd ngx_brotli && git submodule update --init --recursive && cd ..
+git clone --depth=1 https://github.com/google/ngx_brotli && cd ngx_brotli && git submodule update --init --recursive && cd ..
 
-git clone https://github.com/vision5/ngx_devel_kit
+git clone --depth=1 https://github.com/vision5/ngx_devel_kit
 
-git clone https://github.com/cloudflare/zlib
+git clone --depth=1 https://github.com/cloudflare/zlib
 
 cd zlib && make -f Makefile.in distclean && cd ..
 
