@@ -1,7 +1,15 @@
 #!/bin/bash
-NGINX_VERSION=1.21.1
-OPENSSL_VERSION=3.0.0-beta1
+
+# https://nginx.org/en/download.html
+NGINX_VERSION=1.21.2
+
+# https://www.openssl.org/source/
+OPENSSL_VERSION=3.0.0-beta2
+
+# https://ftp.pcre.org/pub/pcre/
 PCRE_VERSION=8.45
+
+# https://github.com/apache/incubator-pagespeed-ngx
 NGX_PAGESPEED_VERSION=1.14.33.1-RC1
 
 echo -e "nginx-$NGINX_VERSION\c" > NGINX_VERSION
