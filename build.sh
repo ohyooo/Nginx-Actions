@@ -37,7 +37,8 @@ cd zlib && make -f Makefile.in distclean && cd ..
 curl https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz | tar -xz
 
 # curl https://ftp.pcre.org/pub/pcre/pcre-$PCRE_VERSION.tar.gz | tar -xz
-curl https://github.com/PhilipHazel/pcre2/releases/download/pcre2-$PCRE_VERSION/pcre2-$PCRE_VERSION.tar.gz | tar -xz
+wget https://github.com/PhilipHazel/pcre2/releases/download/pcre2-$PCRE_VERSION/pcre2-$PCRE_VERSION.tar.gz
+tar zxf pcre2-$PCRE_VERSION.tar.gz
 
 # pagespeed
 sudo apt install build-essential zlib1g-dev libpcre3 libpcre3-dev unzip uuid-dev -y
