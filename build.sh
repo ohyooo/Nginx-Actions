@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # https://nginx.org/en/download.html
-NGINX_VERSION=1.21.4
+NGINX_VERSION=1.21.5
 
 # https://www.openssl.org/source/
-OPENSSL_VERSION=3.0.0
+OPENSSL_VERSION=3.0.1
 
 # https://ftp.pcre.org/pub/pcre/
-PCRE_VERSION=8.45
+PCRE_VERSION=10.39
 
 # https://github.com/apache/incubator-pagespeed-ngx
 NGX_PAGESPEED_VERSION=1.14.33.1-RC1
@@ -36,7 +36,8 @@ cd zlib && make -f Makefile.in distclean && cd ..
 
 curl https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz | tar -xz
 
-curl https://ftp.pcre.org/pub/pcre/pcre-$PCRE_VERSION.tar.gz | tar -xz
+# curl https://ftp.pcre.org/pub/pcre/pcre-$PCRE_VERSION.tar.gz | tar -xz
+curl https://github.com/PhilipHazel/pcre2/releases/download/pcre2-$PCRE_VERSION/pcre2-$PCRE_VERSION.tar.gz | tar -xz
 
 # pagespeed
 sudo apt install build-essential zlib1g-dev libpcre3 libpcre3-dev unzip uuid-dev -y
