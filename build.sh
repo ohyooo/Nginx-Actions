@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # https://nginx.org/en/download.html
-NGINX_VERSION=1.21.5
+NGINX_VERSION=1.21.6
 
 # https://www.openssl.org/source/
 OPENSSL_VERSION=3.0.1
