@@ -4,7 +4,7 @@
 NGINX_VERSION=1.23.0
 
 # https://www.openssl.org/source/
-OPENSSL_VERSION=3.0.4
+OPENSSL_VERSION=3.0.5
 
 # https://github.com/PCRE2Project/pcre2/releases
 PCRE_VERSION=10.40
