@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # https://nginx.org/en/download.html
-NGINX_VERSION=1.23.0
+NGINX_VERSION=1.23.1
 
 # https://www.openssl.org/source/
 OPENSSL_VERSION=3.0.5
@@ -43,7 +43,7 @@ tar zxf pcre2-$PCRE_VERSION.tar.gz
 # pagespeed
 sudo apt install build-essential zlib1g-dev libpcre3 libpcre3-dev unzip uuid-dev -y
 
-git clone https://github.com/apache/incubator-pagespeed-ngx ngx_pagespeed
+git clone --depth=1 https://github.com/apache/incubator-pagespeed-ngx ngx_pagespeed
 
 #wget https://github.com/apache/incubator-pagespeed-ngx/archive/v$NGX_PAGESPEED_VERSION.zip
 #unzip -q v$NGX_PAGESPEED_VERSION.zip
