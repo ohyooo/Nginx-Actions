@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # https://nginx.org/en/download.html
-NGINX_VERSION=1.23.1
+NGINX_VERSION=1.23.2
 
 # https://www.openssl.org/source/
-OPENSSL_VERSION=3.0.5
+OPENSSL_VERSION=3.0.7
 
 # https://github.com/PCRE2Project/pcre2/releases
 PCRE_VERSION=10.40
