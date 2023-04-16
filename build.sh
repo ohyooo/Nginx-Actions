@@ -4,10 +4,10 @@
 NGINX_VERSION=1.23.4
 
 # https://www.openssl.org/source/
-OPENSSL_VERSION=3.0.8
+OPENSSL_VERSION=3.1.0
 
 # https://github.com/PCRE2Project/pcre2/releases
-PCRE_VERSION=10.40
+PCRE_VERSION=10.42
 
 # https://github.com/apache/incubator-pagespeed-ngx
 NGX_PAGESPEED_VERSION=1.14.33.1-RC1
