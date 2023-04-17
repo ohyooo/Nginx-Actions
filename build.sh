@@ -41,7 +41,7 @@ wget https://github.com/PhilipHazel/pcre2/releases/download/pcre2-$PCRE_VERSION/
 tar zxf pcre2-$PCRE_VERSION.tar.gz
 
 # pagespeed
-sudo apt install build-essential zlib1g-dev libpcre3 libpcre3-dev unzip uuid-dev -y
+sudo apt install build-essential zlib1g-dev libpcre3 libpcre3-dev unzip uuid-dev zlib1g zlib1g-dev libssl-dev -y
 
 git clone --depth=1 https://github.com/apache/incubator-pagespeed-ngx ngx_pagespeed
 
