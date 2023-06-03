@@ -1,16 +1,16 @@
 #!/bin/bash
 
 # https://nginx.org/en/download.html
-NGINX_VERSION=1.23.4
+NGINX_VERSION=1.25.0
 
 # https://www.openssl.org/source/
-OPENSSL_VERSION=3.1.0
+OPENSSL_VERSION=3.1.1
 
 # https://github.com/PCRE2Project/pcre2/releases
 PCRE_VERSION=10.42
 
 # https://github.com/apache/incubator-pagespeed-ngx
-NGX_PAGESPEED_VERSION=1.14.33.1-RC1
+#NGX_PAGESPEED_VERSION=1.14.33.1-RC1
 
 echo -e "nginx-$NGINX_VERSION\c" > NGINX_VERSION
 
@@ -49,7 +49,7 @@ git clone --depth=1 https://github.com/apache/incubator-pagespeed-ngx ngx_pagesp
 #unzip -q v$NGX_PAGESPEED_VERSION.zip
 #mv incubator-pagespeed-ngx-$NGX_PAGESPEED_VERSION ngx_pagespeed
 
-curl https://dist.apache.org/repos/dist/release/incubator/pagespeed/1.14.36.1/x64/psol-1.14.36.1-apache-incubating-x64.tar.gz | tar -xz -C ngx_pagespeed
+#curl https://dist.apache.org/repos/dist/release/incubator/pagespeed/1.14.36.1/x64/psol-1.14.36.1-apache-incubating-x64.tar.gz | tar -xz -C ngx_pagespeed
 
 cd ..
 
