@@ -5,49 +5,54 @@ NGINX_VERSION=1.25.0
 LIBRESSL=3.8.0
 PCRE_VERSION=10.42
 
-set -e
-
-# print and store nginx version
-echo "nginx version $NGINX_VERSION" | tee NGINX_VERSION
-
-# download and patch nginx
-curl https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz | tar -xz
-cd nginx-$NGINX_VERSION
-
-curl -LO https://raw.githubusercontent.com/kn007/patch/master/nginx.patch
-curl -LO https://raw.githubusercontent.com/kn007/patch/master/use_openssl_md5_sha1.patch
-
-patch -p1 < nginx.patch
-patch -p1 < use_openssl_md5_sha1.patch
-
-# download libs
-mkdir modules && cd modules
-
 clone_module() {
   git clone --depth=1 "$1" && cd "$(basename "$1")"
   [ "$2" = "submodules" ] && git submodule update --init --recursive
   cd ..
 }
 
-clone_module https://github.com/google/ngx_brotli submodules
-clone_module https://github.com/vision5/ngx_devel_kit
-clone_module https://github.com/cloudflare/zlib
-
-make -C zlib -f Makefile.in distclean
-
 download_and_extract() {
   curl "$1" | tar -xz
 }
 
+set -e
+
+# print and store nginx version
+echo "nginx version $NGINX_VERSION" | tee NGINX_VERSION
+
+echo "patching nginx"
+download_and_extract https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz
+cd nginx-$NGINX_VERSION
+
+curl -LO https://raw.githubusercontent.com/kn007/patch/master/nginx.patch
+curl -LO https://raw.githubusercontent.com/kn007/patch/master/use_openssl_md5_sha1.patch
+
+patch -p1 <nginx.patch
+patch -p1 <use_openssl_md5_sha1.patch
+
 {
-    cd /opt
-    download_and_extract https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-LIBRESSL.tar.gz
+  echo "downloading libs"
+  mkdir modules && cd modules
+
+  echo "downloading ngx_brotli"
+  clone_module https://github.com/google/ngx_brotli submodules
+  echo "downloading ngx_devel_kit"
+  clone_module https://github.com/vision5/ngx_devel_kit
+  echo "downloading zlib"
+  clone_module https://github.com/cloudflare/zlib
+  make -C zlib -f Makefile.in distclean
+  echo "downloading pcre2-$PCRE_VERSION"
+  download_and_extract https://github.com/PhilipHazel/pcre2/releases/download/pcre2-$PCRE_VERSION/pcre2-$PCRE_VERSION.tar.gz
+
 }
 
-wget https://github.com/PhilipHazel/pcre2/releases/download/pcre2-$PCRE_VERSION/pcre2-$PCRE_VERSION.tar.gz
-tar zxf pcre2-$PCRE_VERSION.tar.gz
-
-cd ..
+{
+  echo "downloading libressl-$LIBRESSL"
+  cd /opt
+  rm -rf libressl-$LIBRESSL
+  rm -rf libressl-$LIBRESSL.tar.gz
+  download_and_extract https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-$LIBRESSL.tar.gz
+}
 
 # configure nginx
 ./configure --prefix=/etc/nginx \
@@ -101,7 +106,6 @@ cd ..
   --with-ld-opt="-L/opt/libressl-$LIBRESSL/build/lib"
 
 # compile nginx
-make
+make -j"$(nproc)"
 
 echo "nginx compiled successfully"
-
