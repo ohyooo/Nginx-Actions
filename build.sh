@@ -2,7 +2,7 @@
 
 # versions
 NGINX_VERSION=1.25.2
-LIBRESSL=3.8.0
+LIBRESSL=3.8.1
 PCRE_VERSION=10.42
 
 clone_module() {
@@ -23,12 +23,6 @@ echo "nginx version $NGINX_VERSION" | tee NGINX_VERSION
 echo "patching nginx"
 download_and_extract https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz
 cd nginx-$NGINX_VERSION
-
-curl -LO https://raw.githubusercontent.com/kn007/patch/master/nginx.patch
-curl -LO https://raw.githubusercontent.com/kn007/patch/master/use_openssl_md5_sha1.patch
-
-patch -p1 <nginx.patch
-patch -p1 <use_openssl_md5_sha1.patch
 
 {
   echo "downloading libs"
