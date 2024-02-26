@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # versions
-NGINX_VERSION=1.25.2
+NGINX_VERSION=1.25.4
 LIBRESSL=3.8.1
 PCRE_VERSION=10.42
 
