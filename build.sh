@@ -2,7 +2,7 @@
 
 # versions
 NGINX_VERSION=1.25.4
-LIBRESSL=3.8.1
+LIBRESSL=3.8.2
 PCRE_VERSION=10.42
 
 clone_module() {
