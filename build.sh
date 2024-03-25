@@ -36,7 +36,8 @@ cd nginx-$NGINX_VERSION
   clone_module https://github.com/cloudflare/zlib
   make -C zlib -f Makefile.in distclean
   echo "downloading pcre2-$PCRE_VERSION"
-  download_and_extract https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$PCRE_VERSION/pcre2-$PCRE_VERSION.tar.gz
+  wget https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$PCRE_VERSION/pcre2-$PCRE_VERSION.tar.gz
+  tar zxf pcre2-$PCRE_VERSION.tar.gz
 
 }
 
