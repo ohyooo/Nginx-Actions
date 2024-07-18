@@ -14,7 +14,8 @@ clone_module() {
 }
 
 download_and_extract() {
-  curl "$1" | tar -xzf
+  wget "$1"
+  tar -xzf "$1"
 }
 
 set -e
