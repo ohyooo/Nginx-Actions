@@ -1,59 +1,106 @@
-name: Nginx CI
+#!/bin/bash
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+# versions
+NGINX_VERSION=1.27.0
+OPENSSL=3.10.14
+PCRE_VERSION=10.44
 
-jobs:
-  build:
+DIR=$(pwd)
 
-    runs-on: ubuntu-latest
+clone_module() {
+  git clone --depth=1 "$1" && cd "$(basename "$1")"
+  [ "$2" = "submodules" ] && git submodule update --init --recursive
+  cd ..
+}
 
-    steps:
-      - uses: actions/checkout@v2
+download_and_extract() {
+  curl "$1" | tar -xzf
+}
 
-      - name: Get Time
-        id: time
-        uses: nanzm/get-time-action@v1.1
-        with:
-          timeZone: 8
-          format: 'YYYYMMDDHHmmss'
-     
-      - name: Grant execute permission for sh
-        run: chmod +x build.sh
+set -e
 
-      - name: Build Nginx
-        run: ./build.sh
+# print and store nginx version
+echo "nginx version $NGINX_VERSION" | tee NGINX_VERSION
 
-      - uses: GenesisSam/get-simple-file-action@v1.0.5
-        id: openFile
-        with:
-          file-name: ${{ 'NGINX_VERSION' }}
-        
-      - name: Show dirs
-        run: ls -a
-     
-      - name: Create release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.time.outputs.time }}
-          release_name: Release ${{ steps.time.outputs.time }}
-          draft: false
-          prerelease: false
-     
-      - name: Upload Release
-        id: upload-release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: "${{ steps.openFile.outputs.data }}/objs/nginx"
-          asset_name: nginx
-          asset_content_type: application/octet-stream
+echo "patching nginx"
+download_and_extract https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz
+cd nginx-$NGINX_VERSION
+
+{
+  echo "downloading libs"
+  mkdir modules && cd modules
+
+  echo "downloading ngx_brotli"
+  clone_module https://github.com/google/ngx_brotli submodules
+  echo "downloading ngx_devel_kit"
+  clone_module https://github.com/vision5/ngx_devel_kit
+  echo "downloading zlib"
+  clone_module https://github.com/cloudflare/zlib
+  make -C zlib -f Makefile.in distclean
+  echo "downloading pcre2-$PCRE_VERSION"
+  wget https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$PCRE_VERSION/pcre2-$PCRE_VERSION.tar.gz
+  tar zxf pcre2-$PCRE_VERSION.tar.gz
+
+}
+
+{
+  echo "downloading openssl-$OPENSSL"
+  cd /opt
+  rm -rf libressl-$OPENSSL*.tar.gz
+  download_and_extract https://www.openssl.org/source/openssl-$OPENSSL.tar.gz
+}
+
+cd $DIR
+
+# configure nginx
+./configure --prefix=/etc/nginx \
+  --sbin-path=/usr/sbin/nginx \
+  --modules-path=/usr/lib/nginx/modules \
+  --conf-path=/etc/nginx/nginx.conf \
+  --error-log-path=/var/log/nginx/error.log \
+  --http-log-path=/var/log/nginx/access.log \
+  --pid-path=/run/nginx.pid \
+  --lock-path=/run/nginx.lock \
+  --http-client-body-temp-path=/var/cache/nginx/client_temp \
+  --http-proxy-temp-path=/var/cache/nginx/proxy_temp \
+  --http-fastcgi-temp-path=/var/cache/nginx/fastcgi_temp \
+  --http-uwsgi-temp-path=/var/cache/nginx/uwsgi_temp \
+  --http-scgi-temp-path=/var/cache/nginx/scgi_temp \
+  --user=nginx \
+  --group=nginx \
+  --with-compat \
+  --with-file-aio \
+  --with-threads \
+  --with-http_addition_module \
+  --with-http_auth_request_module \
+  --with-http_dav_module \
+  --with-http_flv_module \
+  --with-http_gunzip_module \
+  --with-http_gzip_static_module \
+  --with-http_mp4_module \
+  --with-http_random_index_module \
+  --with-http_realip_module \
+  --with-http_secure_link_module \
+  --with-http_slice_module \
+  --with-http_ssl_module \
+  --with-http_stub_status_module \
+  --with-http_sub_module \
+  --with-http_v2_module \
+  --with-stream \
+  --with-stream_realip_module \
+  --with-stream_ssl_module \
+  --with-stream_ssl_preread_module \
+  --with-cc-opt='-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -fPIC' \
+  --with-ld-opt='-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie' \
+  --with-pcre=modules/pcre2-$PCRE_VERSION \
+  --with-pcre-jit \
+  --with-zlib=modules/zlib \
+  --add-module=modules/ngx_brotli \
+  --add-module=modules/ngx_devel_kit \
+  --with-http_v3_module \
+  --with-openssl=/opt/openssl-$$OPENSSL
+
+# compile nginx
+make -j"$(nproc)"
+
+echo "nginx compiled successfully"
