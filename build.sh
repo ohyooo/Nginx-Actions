@@ -99,7 +99,7 @@ cd $DIR/nginx-$NGINX_VERSION
   --add-module=modules/ngx_brotli \
   --add-module=modules/ngx_devel_kit \
   --with-http_v3_module \
-  --with-openssl=/opt/openssl-$$OPENSSL
+  --with-openssl=/opt/openssl-$OPENSSL
 
 # compile nginx
 make -j"$(nproc)"
