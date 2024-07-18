@@ -1,9 +1,11 @@
 #!/bin/bash
 
 # versions
-NGINX_VERSION=1.25.4
-LIBRESSL=3.8.2
-PCRE_VERSION=10.43
+NGINX_VERSION=1.27.0
+LIBRESSL=3.9.2
+PCRE_VERSION=10.44
+
+DIR=$(pwd)
 
 clone_module() {
   git clone --depth=1 "$1" && cd "$(basename "$1")"
@@ -48,6 +50,8 @@ cd nginx-$NGINX_VERSION
   rm -rf libressl-$LIBRESSL.tar.gz
   download_and_extract https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-$LIBRESSL.tar.gz
 }
+
+cd $DIR
 
 # configure nginx
 ./configure --prefix=/etc/nginx \
@@ -94,7 +98,6 @@ cd nginx-$NGINX_VERSION
   --with-zlib=modules/zlib \
   --add-module=modules/ngx_brotli \
   --add-module=modules/ngx_devel_kit \
-  --with-http_v2_hpack_enc \
   --with-http_v3_module \
   --with-openssl=/opt/libressl-$LIBRESSL \
   --with-cc-opt="-I/opt/libressl-$LIBRESSL/build/include" \
