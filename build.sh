@@ -51,7 +51,7 @@ cd nginx-$NGINX_VERSION
   download_and_extract https://www.openssl.org/source/openssl-3.0.14.tar.gz openssl-$OPENSSL.tar.gz
 }
 
-cd $DIR
+cd $DIR/nginx-$NGINX_VERSION
 
 # configure nginx
 ./configure --prefix=/etc/nginx \
