@@ -48,7 +48,7 @@ cd nginx-$NGINX_VERSION
   echo "downloading openssl-$OPENSSL"
   cd /opt
   rm -rf libressl-$OPENSSL*.tar.gz
-  download_and_extract https://www.openssl.org/source/openssl-$OPENSSL.tar.gz openssl-$OPENSSL.tar.gz
+  download_and_extract https://www.openssl.org/source/openssl-3.0.14.tar.gz openssl-$OPENSSL.tar.gz
 }
 
 cd $DIR
