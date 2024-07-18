@@ -2,7 +2,7 @@
 
 # versions
 NGINX_VERSION=1.27.0
-LIBRESSL=3.9.2
+OPENSSL=3.10.14
 PCRE_VERSION=10.44
 
 DIR=$(pwd)
@@ -44,11 +44,10 @@ cd nginx-$NGINX_VERSION
 }
 
 {
-  echo "downloading libressl-$LIBRESSL"
+  echo "downloading openssl-$OPENSSL"
   cd /opt
-  rm -rf libressl-$LIBRESSL
-  rm -rf libressl-$LIBRESSL.tar.gz
-  download_and_extract https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-$LIBRESSL.tar.gz
+  rm -rf libressl-$OPENSSL*.tar.gz
+  download_and_extract https://www.openssl.org/source/openssl-$OPENSSL.tar.gz
 }
 
 cd $DIR
@@ -99,9 +98,7 @@ cd $DIR
   --add-module=modules/ngx_brotli \
   --add-module=modules/ngx_devel_kit \
   --with-http_v3_module \
-  --with-openssl=/opt/libressl-$LIBRESSL \
-  --with-cc-opt="-I/opt/libressl-$LIBRESSL/build/include" \
-  --with-ld-opt="-L/opt/libressl-$LIBRESSL/build/lib"
+  --with-openssl=/opt/openssl-$$OPENSSL
 
 # compile nginx
 make -j"$(nproc)"
