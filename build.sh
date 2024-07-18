@@ -7,6 +7,9 @@ PCRE_VERSION=10.44
 
 DIR=$(pwd)
 
+sudo apt update && apt install libbrotli-dev -y
+
+
 clone_module() {
   git clone --depth=1 "$1" && cd "$(basename "$1")"
   [ "$2" = "submodules" ] && git submodule update --init --recursive
