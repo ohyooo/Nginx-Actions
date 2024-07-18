@@ -15,7 +15,7 @@ clone_module() {
 
 download_and_extract() {
   wget "$1"
-  tar -xzf "$1"
+  tar -xzf "$2"
 }
 
 set -e
@@ -24,7 +24,7 @@ set -e
 echo "nginx version $NGINX_VERSION" | tee NGINX_VERSION
 
 echo "patching nginx"
-download_and_extract https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz
+download_and_extract https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz nginx-$NGINX_VERSION.tar.gz
 cd nginx-$NGINX_VERSION
 
 {
@@ -40,7 +40,7 @@ cd nginx-$NGINX_VERSION
   make -C zlib -f Makefile.in distclean
   echo "downloading pcre2-$PCRE_VERSION"
   wget https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$PCRE_VERSION/pcre2-$PCRE_VERSION.tar.gz
-  tar zxf pcre2-$PCRE_VERSION.tar.gz
+  tar -zxf pcre2-$PCRE_VERSION.tar.gz
 
 }
 
@@ -48,7 +48,7 @@ cd nginx-$NGINX_VERSION
   echo "downloading openssl-$OPENSSL"
   cd /opt
   rm -rf libressl-$OPENSSL*.tar.gz
-  download_and_extract https://www.openssl.org/source/openssl-$OPENSSL.tar.gz
+  download_and_extract https://www.openssl.org/source/openssl-$OPENSSL.tar.gz openssl-$OPENSSL.tar.gz
 }
 
 cd $DIR
