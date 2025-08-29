@@ -52,7 +52,7 @@ cd nginx-$NGINX_VERSION
   cd /opt
   rm -rf libressl-$OPENSSL*.tar.gz
   # https://github.com/openssl/openssl/releases/download/openssl-3.5.2/openssl-3.5.2.tar.gz
-  download_and_extract https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL}/openssl-${OPENSSL}.tar.gz
+  download_and_extract https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL}/openssl-${OPENSSL}.tar.gz openssl-$OPENSSL.tar.gz
   # download_and_extract https://www.openssl.org/source/openssl-3.0.14.tar.gz openssl-$OPENSSL.tar.gz
 }
 
