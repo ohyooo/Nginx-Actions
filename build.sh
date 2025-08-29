@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # versions
-NGINX_VERSION=1.27.0
-OPENSSL=3.0.14
+NGINX_VERSION=1.29.1
+OPENSSL=3.5.2
 PCRE_VERSION=10.44
 
 DIR=$(pwd)
