@@ -92,18 +92,18 @@ cd $DIR/nginx-$NGINX_VERSION
   --with-http_stub_status_module \
   --with-http_sub_module \
   --with-http_v2_module \
+  --with-http_v3_module \
   --with-stream \
   --with-stream_realip_module \
   --with-stream_ssl_module \
   --with-stream_ssl_preread_module \
-  --with-cc-opt='-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -fPIC' \
+  --with-cc-opt='-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3' \
   --with-ld-opt='-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie' \
   --with-pcre=modules/pcre2-$PCRE_VERSION \
   --with-pcre-jit \
   --with-zlib=modules/zlib \
   --add-module=modules/ngx_brotli \
   --add-module=modules/ngx_devel_kit \
-  --with-http_v3_module \
   --with-openssl=/opt/openssl-$OPENSSL
 
 # compile nginx
