@@ -90,6 +90,11 @@ download_and_extract "https://github.com/PCRE2Project/pcre2/releases/download/pc
 log "clone quictls ($QUICTLS_BRANCH)"
 rm -rf quictls
 git clone --recursive --depth=1 -b "$QUICTLS_BRANCH" https://github.com/quictls/quictls quictls
+(
+  cd quictls
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+  cmake --build build -j"$BUILD_JOBS"
+)
 
 cd "$SRC_DIR/nginx-$NGINX_VERSION"
 
@@ -143,8 +148,9 @@ log "configure nginx"
   --with-zlib=modules/zlib \
   --add-module=modules/ngx_brotli \
   --add-module=modules/ngx_devel_kit \
-  --with-openssl=modules/quictls \
-  --with-openssl-opt='enable-ktls'
+  --with-http_v3_module \
+  --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$SRC_DIR/nginx-$NGINX_VERSION/modules/quictls/build/include" \
+  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$SRC_DIR/nginx-$NGINX_VERSION/modules/quictls/build/lib"
 
 log "build nginx with -j$BUILD_JOBS"
 make -j"$BUILD_JOBS"
