@@ -4,7 +4,7 @@ set -euo pipefail
 # ===== versions =====
 NGINX_VERSION="1.29.5"
 PCRE2_VERSION="10.47"
-QUICTLS_BRANCH="main"
+QUICTLS_BRANCH="${QUICTLS_BRANCH:-main}"
 
 # ===== build settings for low-resource machine =====
 BUILD_JOBS="${BUILD_JOBS:-1}"
@@ -58,6 +58,7 @@ sudo apt install -y \
   perl \
   cmake \
   ninja-build \
+  pkg-config \
   libbrotli-dev \
   libunwind-dev
 
@@ -90,16 +91,23 @@ download_and_extract "https://github.com/PCRE2Project/pcre2/releases/download/pc
 log "clone quictls ($QUICTLS_BRANCH)"
 rm -rf quictls
 git clone --recursive --depth=1 -b "$QUICTLS_BRANCH" https://github.com/quictls/quictls quictls
+
+log "build quictls"
 (
   cd quictls
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+  cmake -S . -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX="$PWD/dist"
   cmake --build build -j"$BUILD_JOBS"
+  cmake --install build
 )
 
 cd "$SRC_DIR/nginx-$NGINX_VERSION"
 
 log "write nginx version file"
 echo "nginx version $NGINX_VERSION" | tee "$ROOT_DIR/NGINX_VERSION"
+
+QUICTLS_PREFIX="$SRC_DIR/nginx-$NGINX_VERSION/modules/quictls/dist"
 
 log "configure nginx"
 ./configure \
@@ -141,16 +149,13 @@ log "configure nginx"
   --with-stream_realip_module \
   --with-stream_ssl_module \
   --with-stream_ssl_preread_module \
-  --with-cc-opt='-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3' \
-  --with-ld-opt='-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie' \
+  --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$QUICTLS_PREFIX/include" \
+  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$QUICTLS_PREFIX/lib -L$QUICTLS_PREFIX/lib64" \
   --with-pcre="modules/pcre2-$PCRE2_VERSION" \
   --with-pcre-jit \
   --with-zlib=modules/zlib \
   --add-module=modules/ngx_brotli \
-  --add-module=modules/ngx_devel_kit \
-  --with-http_v3_module \
-  --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$SRC_DIR/nginx-$NGINX_VERSION/modules/quictls/build/include" \
-  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$SRC_DIR/nginx-$NGINX_VERSION/modules/quictls/build/lib"
+  --add-module=modules/ngx_devel_kit
 
 log "build nginx with -j$BUILD_JOBS"
 make -j"$BUILD_JOBS"
@@ -159,7 +164,12 @@ log "show nginx version info"
 objs/nginx -V
 
 cat <<EOF
+
 编译完成。
 二进制文件：
   $SRC_DIR/nginx-$NGINX_VERSION/objs/nginx
+
+低配机器建议：
+  BUILD_JOBS=1 bash $0
+
 EOF
