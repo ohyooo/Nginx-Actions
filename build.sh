@@ -99,7 +99,7 @@ log "build quictls"
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="$PWD/dist"
   cmake --build build -j"$BUILD_JOBS"
-  cmake --install build
+  cmake --install build || true
 
   ls -la "$SRC_DIR/nginx-$NGINX_VERSION/modules/quictls/dist/include"
   ls -la "$SRC_DIR/nginx-$NGINX_VERSION/modules/quictls/dist/lib"
