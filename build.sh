@@ -89,7 +89,7 @@ download_and_extract "https://github.com/PCRE2Project/pcre2/releases/download/pc
 
 log "clone quictls ($QUICTLS_BRANCH)"
 rm -rf quictls
-git clone --depth=1 -b "$QUICTLS_BRANCH" https://github.com/quictls/quictls quictls
+git clone --recursive --depth=1 -b "$QUICTLS_BRANCH" https://github.com/quictls/quictls quictls
 
 cd "$SRC_DIR/nginx-$NGINX_VERSION"
 
