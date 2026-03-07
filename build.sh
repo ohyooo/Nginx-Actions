@@ -4,7 +4,7 @@ set -euo pipefail
 # ===== versions =====
 NGINX_VERSION="1.29.5"
 PCRE2_VERSION="10.47"
-QUICTLS_BRANCH="openssl-3.3.0+quic"
+QUICTLS_BRANCH="main"
 
 # ===== build settings for low-resource machine =====
 BUILD_JOBS="${BUILD_JOBS:-2}"
@@ -89,7 +89,7 @@ download_and_extract "https://github.com/PCRE2Project/pcre2/releases/download/pc
 
 log "clone quictls ($QUICTLS_BRANCH)"
 rm -rf quictls
-git clone --depth=1 -b "$QUICTLS_BRANCH" https://github.com/quictls/openssl quictls
+git clone --depth=1 -b "$QUICTLS_BRANCH" https://github.com/quictls/quictls quictls
 
 cd "$SRC_DIR/nginx-$NGINX_VERSION"
 
