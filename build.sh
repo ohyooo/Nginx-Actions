@@ -4,9 +4,7 @@ set -euo pipefail
 # ===== versions =====
 NGINX_VERSION="1.29.5"
 PCRE2_VERSION="10.47"
-QUICTLS_BRANCH="${QUICTLS_BRANCH:-main}"
-
-# ===== build settings for low-resource machine =====
+#BUILD_JOBS="${BUILD_JOBS:-1}"
 BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 
 # ===== paths =====
@@ -59,6 +57,7 @@ sudo apt install -y \
   cmake \
   ninja-build \
   pkg-config \
+  clang \
   libbrotli-dev \
   libunwind-dev
 
@@ -88,22 +87,15 @@ make -C zlib -f Makefile.in distclean >/dev/null 2>&1 || true
 log "download pcre2-$PCRE2_VERSION"
 download_and_extract "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$PCRE2_VERSION/pcre2-$PCRE2_VERSION.tar.gz"
 
-log "clone quictls ($QUICTLS_BRANCH)"
-rm -rf quictls
-git clone --recursive --depth=1 -b "$QUICTLS_BRANCH" https://github.com/quictls/quictls quictls
+log "clone boringssl"
+rm -rf boringssl
+git clone --depth=1 https://github.com/google/boringssl boringssl
 
-log "build quictls"
+log "build boringssl"
 (
-  cd quictls
-  cmake -S . -B build \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX="$PWD/dist"
+  cd boringssl
+  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
   cmake --build build -j"$BUILD_JOBS"
-  cmake --install build || true
-
-  ls -la "$SRC_DIR/nginx-$NGINX_VERSION/modules/quictls/dist/include"
-  ls -la "$SRC_DIR/nginx-$NGINX_VERSION/modules/quictls/dist/lib"
-  ls -la "$SRC_DIR/nginx-$NGINX_VERSION/modules/quictls/dist/lib64"
 )
 
 cd "$SRC_DIR/nginx-$NGINX_VERSION"
@@ -111,7 +103,8 @@ cd "$SRC_DIR/nginx-$NGINX_VERSION"
 log "write nginx version file"
 echo "nginx version $NGINX_VERSION" | tee "$ROOT_DIR/NGINX_VERSION"
 
-QUICTLS_PREFIX="$SRC_DIR/nginx-$NGINX_VERSION/modules/quictls/dist"
+BORINGSSL_DIR="$SRC_DIR/nginx-$NGINX_VERSION/modules/boringssl"
+BORINGSSL_BUILD_DIR="$BORINGSSL_DIR/build"
 
 log "configure nginx"
 ./configure \
@@ -153,8 +146,8 @@ log "configure nginx"
   --with-stream_realip_module \
   --with-stream_ssl_module \
   --with-stream_ssl_preread_module \
-  --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$QUICTLS_PREFIX/include" \
-  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$QUICTLS_PREFIX/lib -L$QUICTLS_PREFIX/lib64" \
+  --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$BORINGSSL_DIR/include" \
+  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$BORINGSSL_BUILD_DIR -lstdc++" \
   --with-pcre="modules/pcre2-$PCRE2_VERSION" \
   --with-pcre-jit \
   --with-zlib=modules/zlib \
