@@ -1,65 +1,104 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# versions
-NGINX_VERSION=1.29.1
-OPENSSL=3.5.2
-PCRE_VERSION=10.44
+# ===== versions =====
+NGINX_VERSION="1.29.5"
+PCRE2_VERSION="10.47"
+QUICTLS_BRANCH="openssl-3.3.0+quic"
 
-DIR=$(pwd)
+# ===== build settings for low-resource machine =====
+BUILD_JOBS="${BUILD_JOBS:-2}"
 
-sudo apt update && apt install libbrotli-dev -y
+# ===== paths =====
+ROOT_DIR="$(pwd)"
+SRC_DIR="$ROOT_DIR/src"
 
+log() {
+  printf '\n>>> %s\n' "$*"
+}
 
 clone_module() {
-  git clone --depth=1 "$1" && cd "$(basename "$1")"
-  [ "$2" = "submodules" ] && git submodule update --init --recursive
-  cd ..
+  local url="$1"
+  local dir="${2:-}"
+  local with_submodules="${3:-}"
+
+  if [ -z "$dir" ]; then
+    dir="${url##*/}"
+    dir="${dir%.git}"
+  fi
+
+  rm -rf "$dir"
+  git clone --depth=1 "$url" "$dir"
+
+  if [ "$with_submodules" = "submodules" ]; then
+    (
+      cd "$dir"
+      git submodule update --init --recursive
+    )
+  fi
 }
 
 download_and_extract() {
-  wget "$1"
-  tar -xzf "$2"
+  local url="$1"
+  local out="${2:-${url##*/}}"
+
+  rm -f "$out"
+  wget -O "$out" "$url"
+  tar -xf "$out"
 }
 
-set -e
+log "install build dependencies"
+sudo apt update
+sudo apt install -y \
+  build-essential \
+  git \
+  wget \
+  curl \
+  ca-certificates \
+  perl \
+  cmake \
+  ninja-build \
+  libbrotli-dev \
+  libunwind-dev
 
-# print and store nginx version
-echo "nginx version $NGINX_VERSION" | tee NGINX_VERSION
+log "prepare source directory"
+rm -rf "$SRC_DIR"
+mkdir -p "$SRC_DIR"
 
-echo "patching nginx"
-download_and_extract https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz nginx-$NGINX_VERSION.tar.gz
-cd nginx-$NGINX_VERSION
+cd "$SRC_DIR"
 
-{
-  echo "downloading libs"
-  mkdir modules && cd modules
+log "download nginx-$NGINX_VERSION"
+download_and_extract "https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
-  echo "downloading ngx_brotli"
-  clone_module https://github.com/google/ngx_brotli submodules
-  echo "downloading ngx_devel_kit"
-  clone_module https://github.com/vision5/ngx_devel_kit
-  echo "downloading zlib"
-  clone_module https://github.com/cloudflare/zlib
-  make -C zlib -f Makefile.in distclean
-  echo "downloading pcre2-$PCRE_VERSION"
-  wget https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$PCRE_VERSION/pcre2-$PCRE_VERSION.tar.gz
-  tar -zxf pcre2-$PCRE_VERSION.tar.gz
+cd "nginx-$NGINX_VERSION"
+mkdir -p modules
+cd modules
 
-}
+log "clone ngx_brotli"
+clone_module "https://github.com/google/ngx_brotli" "ngx_brotli" "submodules"
 
-{
-  echo "downloading openssl-$OPENSSL"
-  cd /opt
-  rm -rf libressl-$OPENSSL*.tar.gz
-  # https://github.com/openssl/openssl/releases/download/openssl-3.5.2/openssl-3.5.2.tar.gz
-  download_and_extract https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL}/openssl-${OPENSSL}.tar.gz openssl-$OPENSSL.tar.gz
-  # download_and_extract https://www.openssl.org/source/openssl-3.0.14.tar.gz openssl-$OPENSSL.tar.gz
-}
+log "clone ngx_devel_kit"
+clone_module "https://github.com/vision5/ngx_devel_kit" "ngx_devel_kit"
 
-cd $DIR/nginx-$NGINX_VERSION
+log "clone cloudflare zlib"
+clone_module "https://github.com/cloudflare/zlib" "zlib"
+make -C zlib -f Makefile.in distclean >/dev/null 2>&1 || true
 
-# configure nginx
-./configure --prefix=/etc/nginx \
+log "download pcre2-$PCRE2_VERSION"
+download_and_extract "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$PCRE2_VERSION/pcre2-$PCRE2_VERSION.tar.gz"
+
+log "clone quictls ($QUICTLS_BRANCH)"
+rm -rf quictls
+git clone --depth=1 -b "$QUICTLS_BRANCH" https://github.com/quictls/openssl quictls
+
+cd "$SRC_DIR/nginx-$NGINX_VERSION"
+
+log "write nginx version file"
+echo "nginx version $NGINX_VERSION" | tee "$ROOT_DIR/NGINX_VERSION"
+
+log "configure nginx"
+./configure \
+  --prefix=/etc/nginx \
   --sbin-path=/usr/sbin/nginx \
   --modules-path=/usr/lib/nginx/modules \
   --conf-path=/etc/nginx/nginx.conf \
@@ -97,16 +136,24 @@ cd $DIR/nginx-$NGINX_VERSION
   --with-stream_realip_module \
   --with-stream_ssl_module \
   --with-stream_ssl_preread_module \
-  --with-cc-opt='-g -O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3' \
+  --with-cc-opt='-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3' \
   --with-ld-opt='-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie' \
-  --with-pcre=modules/pcre2-$PCRE_VERSION \
+  --with-pcre="modules/pcre2-$PCRE2_VERSION" \
   --with-pcre-jit \
   --with-zlib=modules/zlib \
   --add-module=modules/ngx_brotli \
   --add-module=modules/ngx_devel_kit \
-  --with-openssl=/opt/openssl-$OPENSSL
+  --with-openssl=modules/quictls \
+  --with-openssl-opt='enable-ktls'
 
-# compile nginx
-make -j"$(nproc)"
+log "build nginx with -j$BUILD_JOBS"
+make -j"$BUILD_JOBS"
 
-echo "nginx compiled successfully"
+log "show nginx version info"
+objs/nginx -V
+
+cat <<EOF
+编译完成。
+二进制文件：
+  $SRC_DIR/nginx-$NGINX_VERSION/objs/nginx
+EOF
