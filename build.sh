@@ -7,7 +7,7 @@ PCRE2_VERSION="10.47"
 QUICTLS_BRANCH="main"
 
 # ===== build settings for low-resource machine =====
-BUILD_JOBS="${BUILD_JOBS:-2}"
+BUILD_JOBS="${BUILD_JOBS:-1}"
 
 # ===== paths =====
 ROOT_DIR="$(pwd)"
