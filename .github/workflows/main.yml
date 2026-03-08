@@ -26,22 +26,18 @@ jobs:
 
       - name: Build Nginx
         run: ./build.sh
-
-      - name: Get Nginx dir
-        uses: GenesisSam/get-simple-file-action@v1.0.5
-        id: openFile
-        with:
-          file-name: NGINX_VERSION
-
+      
       - name: Show dirs
         run: |
           ls -alh
-          ls -alh objs
-          objs/nginx -V
-
+          ls -alh src
+          ls -alh src/nginx-1.29.5
+          ls -alh src/nginx-1.29.5/objs
+          src/nginx-1.29.5/objs/nginx -V
+      
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: nginx-${{ steps.time.outputs.time }}
-          path: ${{ steps.openFile.outputs.data }}/objs/nginx
+          path: src/nginx-1.29.5/objs/nginx
           if-no-files-found: error
