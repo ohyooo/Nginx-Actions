@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ===== versions =====
 NGINX_VERSION="1.29.5"
 PCRE2_VERSION="10.47"
 
-# ===== build settings =====
-BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
-
-# ===== paths =====
 ROOT_DIR="$(pwd)"
 SRC_DIR="$ROOT_DIR/src"
 
@@ -96,7 +91,7 @@ log "build boringssl"
 (
   cd boringssl
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-  cmake --build build -j"$BUILD_JOBS"
+  cmake --build build -j"$(nproc)"
 )
 
 cd "$SRC_DIR/nginx-$NGINX_VERSION"
@@ -107,9 +102,15 @@ echo "nginx version $NGINX_VERSION" | tee "$ROOT_DIR/NGINX_VERSION"
 BORINGSSL_DIR="$SRC_DIR/nginx-$NGINX_VERSION/modules/boringssl"
 BORINGSSL_BUILD_DIR="$BORINGSSL_DIR/build"
 
-log "check boringssl artifacts"
-test -f "$BORINGSSL_BUILD_DIR/ssl/libssl.a"
-test -f "$BORINGSSL_BUILD_DIR/crypto/libcrypto.a"
+log "locate boringssl artifacts"
+LIBSSL_A="$(find "$BORINGSSL_BUILD_DIR" -type f -name libssl.a | head -n1)"
+LIBCRYPTO_A="$(find "$BORINGSSL_BUILD_DIR" -type f -name libcrypto.a | head -n1)"
+
+[ -n "$LIBSSL_A" ] || { echo "libssl.a not found under $BORINGSSL_BUILD_DIR"; exit 1; }
+[ -n "$LIBCRYPTO_A" ] || { echo "libcrypto.a not found under $BORINGSSL_BUILD_DIR"; exit 1; }
+
+LIBSSL_DIR="$(dirname "$LIBSSL_A")"
+LIBCRYPTO_DIR="$(dirname "$LIBCRYPTO_A")"
 
 log "configure nginx"
 ./configure \
@@ -152,15 +153,15 @@ log "configure nginx"
   --with-stream_ssl_module \
   --with-stream_ssl_preread_module \
   --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$BORINGSSL_DIR/include" \
-  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$BORINGSSL_BUILD_DIR/ssl -L$BORINGSSL_BUILD_DIR/crypto -lssl -lcrypto -lstdc++" \
+  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$LIBSSL_DIR -L$LIBCRYPTO_DIR -lssl -lcrypto -lstdc++" \
   --with-pcre="modules/pcre2-$PCRE2_VERSION" \
   --with-pcre-jit \
   --with-zlib=modules/zlib \
   --add-module=modules/ngx_brotli \
   --add-module=modules/ngx_devel_kit
 
-log "build nginx with -j$BUILD_JOBS"
-make -j"$BUILD_JOBS"
+log "build nginx"
+make -j"$(nproc)"
 
 log "show nginx version info"
 objs/nginx -V
