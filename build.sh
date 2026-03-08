@@ -6,6 +6,7 @@ PCRE2_VERSION="10.47"
 
 ROOT_DIR="$(pwd)"
 SRC_DIR="$ROOT_DIR/src"
+NPROC="$(nproc)"
 
 log() {
   printf '\n>>> %s\n' "$*"
@@ -91,7 +92,7 @@ log "build boringssl"
 (
   cd boringssl
   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-  cmake --build build -j"$(nproc)"
+  cmake --build build -j"$NPROC"
 )
 
 cd "$SRC_DIR/nginx-$NGINX_VERSION"
@@ -161,7 +162,7 @@ log "configure nginx"
   --add-module=modules/ngx_devel_kit
 
 log "build nginx"
-make -j"$(nproc)"
+make -j"$NPROC"
 
 log "show nginx version info"
 objs/nginx -V
