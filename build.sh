@@ -4,7 +4,8 @@ set -euo pipefail
 # ===== versions =====
 NGINX_VERSION="1.29.5"
 PCRE2_VERSION="10.47"
-#BUILD_JOBS="${BUILD_JOBS:-1}"
+
+# ===== build settings =====
 BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 
 # ===== paths =====
@@ -106,6 +107,10 @@ echo "nginx version $NGINX_VERSION" | tee "$ROOT_DIR/NGINX_VERSION"
 BORINGSSL_DIR="$SRC_DIR/nginx-$NGINX_VERSION/modules/boringssl"
 BORINGSSL_BUILD_DIR="$BORINGSSL_DIR/build"
 
+log "check boringssl artifacts"
+test -f "$BORINGSSL_BUILD_DIR/ssl/libssl.a"
+test -f "$BORINGSSL_BUILD_DIR/crypto/libcrypto.a"
+
 log "configure nginx"
 ./configure \
   --prefix=/etc/nginx \
@@ -147,7 +152,7 @@ log "configure nginx"
   --with-stream_ssl_module \
   --with-stream_ssl_preread_module \
   --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$BORINGSSL_DIR/include" \
-  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$BORINGSSL_BUILD_DIR -lstdc++" \
+  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$BORINGSSL_BUILD_DIR/ssl -L$BORINGSSL_BUILD_DIR/crypto -lssl -lcrypto -lstdc++" \
   --with-pcre="modules/pcre2-$PCRE2_VERSION" \
   --with-pcre-jit \
   --with-zlib=modules/zlib \
@@ -165,8 +170,5 @@ cat <<EOF
 编译完成。
 二进制文件：
   $SRC_DIR/nginx-$NGINX_VERSION/objs/nginx
-
-低配机器建议：
-  BUILD_JOBS=1 bash $0
 
 EOF
