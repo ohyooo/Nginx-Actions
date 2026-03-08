@@ -9,7 +9,6 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-24.04
 
     steps:
@@ -21,39 +20,28 @@ jobs:
         with:
           timeZone: 8
           format: 'YYYYMMDDHHmmss'
-     
+
       - name: Grant execute permission for sh
         run: chmod +x build.sh
 
       - name: Build Nginx
         run: ./build.sh
 
-      - uses: GenesisSam/get-simple-file-action@v1.0.5
+      - name: Get Nginx dir
+        uses: GenesisSam/get-simple-file-action@v1.0.5
         id: openFile
         with:
-          file-name: ${{ 'NGINX_VERSION' }}
-        
+          file-name: NGINX_VERSION
+
       - name: Show dirs
-        run: ls -a
-     
-      - name: Create release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -alh
+          ls -alh objs
+          objs/nginx -V
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ steps.time.outputs.time }}
-          release_name: Release ${{ steps.time.outputs.time }}
-          draft: false
-          prerelease: false
-     
-      - name: Upload Release
-        id: upload-release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: "${{ steps.openFile.outputs.data }}/objs/nginx"
-          asset_name: nginx
-          asset_content_type: application/octet-stream
+          name: nginx-${{ steps.time.outputs.time }}
+          path: ${{ steps.openFile.outputs.data }}/objs/nginx
+          if-no-files-found: error
