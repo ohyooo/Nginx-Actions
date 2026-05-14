@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NGINX_VERSION="1.29.5"
+NGINX_VERSION="1.31.0"
 PCRE2_VERSION="10.47"
 
 ROOT_DIR="$(pwd)"
