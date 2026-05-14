@@ -22,8 +22,11 @@ clone_module() {
     dir="${dir%.git}"
   fi
 
-  rm -rf "$dir"
-  git clone --depth=1 "$url" "$dir"
+  if [ -d "$dir/.git" ]; then
+    log "reuse $dir"
+  else
+    git clone --depth=1 "$url" "$dir"
+  fi
 
   if [ "$with_submodules" = "submodules" ]; then
     (
@@ -36,8 +39,13 @@ clone_module() {
 download_and_extract() {
   local url="$1"
   local out="${2:-${url##*/}}"
+  local extracted="${out%.tar.gz}"
 
-  rm -f "$out"
+  if [ -d "$extracted" ]; then
+    log "reuse $extracted"
+    return 0
+  fi
+
   wget -O "$out" "$url"
   tar -xf "$out"
 }
@@ -59,7 +67,6 @@ sudo apt install -y \
   libunwind-dev
 
 log "prepare source directory"
-rm -rf "$SRC_DIR"
 mkdir -p "$SRC_DIR"
 
 cd "$SRC_DIR"
@@ -85,8 +92,7 @@ log "download pcre2-$PCRE2_VERSION"
 download_and_extract "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$PCRE2_VERSION/pcre2-$PCRE2_VERSION.tar.gz"
 
 log "clone boringssl"
-rm -rf boringssl
-git clone --depth=1 https://github.com/google/boringssl boringssl
+clone_module "https://github.com/google/boringssl" "boringssl"
 
 log "build boringssl"
 (

@@ -10,9 +10,32 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      CCACHE_DIR: /home/runner/.cache/ccache
+      CCACHE_MAXSIZE: 2G
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: true
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Restore compile cache
+        id: restore-ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-ccache-${{ hashFiles('build.sh', '.github/workflows/main.yml') }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-${{ hashFiles('build.sh', '.github/workflows/main.yml') }}-
+            ${{ runner.os }}-ccache-
+
+      - name: Install ccache
+        run: |
+          sudo apt update
+          sudo apt install -y ccache
+          ccache --set-config=max_size=${CCACHE_MAXSIZE}
+          ccache --zero-stats
+          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
 
       - name: Get Time
         id: time
@@ -26,6 +49,17 @@ jobs:
 
       - name: Build Nginx
         run: ./build.sh
+
+      - name: Save compile cache
+        if: success() && steps.restore-ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
+
+      - name: Show ccache stats
+        if: always()
+        run: ccache --show-stats
       
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
