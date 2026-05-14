@@ -27,14 +27,6 @@ jobs:
       - name: Build Nginx
         run: ./build.sh
       
-      - name: Show dirs
-        run: |
-          ls -alh
-          ls -alh src
-          ls -alh src/nginx-1.29.5
-          ls -alh src/nginx-1.29.5/objs
-          src/nginx-1.29.5/objs/nginx -V
-      
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
