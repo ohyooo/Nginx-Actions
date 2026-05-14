@@ -37,18 +37,8 @@ jobs:
           ccache --zero-stats
           echo "/usr/lib/ccache" >> "$GITHUB_PATH"
 
-      - name: Get Time
-        id: time
-        uses: nanzm/get-time-action@master
-        with:
-          timeZone: 8
-          format: 'YYYYMMDDHHmmss'
-
-      - name: Grant execute permission for sh
-        run: chmod +x build.sh
-
       - name: Build Nginx
-        run: ./build.sh
+        run: bash ./build.sh
 
       - name: Save compile cache
         if: success() && steps.restore-ccache.outputs.cache-hit != 'true'
@@ -64,6 +54,6 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: nginx-${{ steps.time.outputs.time }}
+          name: nginx
           path: src/nginx-*/objs/nginx
           if-no-files-found: error
