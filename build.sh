@@ -81,9 +81,6 @@ cd modules
 log "clone ngx_brotli"
 clone_module "https://github.com/google/ngx_brotli" "ngx_brotli" "submodules"
 
-log "clone ngx_devel_kit"
-clone_module "https://github.com/vision5/ngx_devel_kit" "ngx_devel_kit"
-
 log "clone cloudflare zlib"
 clone_module "https://github.com/cloudflare/zlib" "zlib"
 make -C zlib -f Makefile.in distclean >/dev/null 2>&1 || true
@@ -97,7 +94,7 @@ clone_module "https://github.com/google/boringssl" "boringssl"
 log "build boringssl"
 (
   cd boringssl
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+  cmake -S . -B build -GNinja -DCMAKE_BUILD_TYPE=Release
   cmake --build build -j"$NPROC"
 )
 
@@ -164,8 +161,7 @@ log "configure nginx"
   --with-pcre="modules/pcre2-$PCRE2_VERSION" \
   --with-pcre-jit \
   --with-zlib=modules/zlib \
-  --add-module=modules/ngx_brotli \
-  --add-module=modules/ngx_devel_kit
+  --add-module=modules/ngx_brotli
 
 log "build nginx"
 make -j"$NPROC"
