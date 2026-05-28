@@ -38,7 +38,9 @@ jobs:
           echo "/usr/lib/ccache" >> "$GITHUB_PATH"
 
       - name: Build Nginx
-        run: bash ./build.sh
+        run: |
+          bash ./build.sh
+          mv src/nginx-*/objs/nginx .
 
       - name: Save compile cache
         if: success() && steps.restore-ccache.outputs.cache-hit != 'true'
@@ -55,5 +57,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nginx
-          path: src/nginx-*/objs/nginx
+          path: nginx
           if-no-files-found: error
