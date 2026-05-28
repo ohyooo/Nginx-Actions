@@ -63,7 +63,8 @@ sudo apt install -y \
   pkg-config \
   clang \
   libbrotli-dev \
-  libunwind-dev
+  libunwind-dev \
+  autoconf automake libtool
 
 log "prepare source directory"
 mkdir -p "$SRC_DIR"
@@ -87,6 +88,10 @@ make -C zlib -f Makefile.in distclean >/dev/null 2>&1 || true
 log "clone pcre2"
 # download_and_extract "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$PCRE2_VERSION/pcre2-$PCRE2_VERSION.tar.gz"
 clone_module https://github.com/PCRE2Project/pcre2 "pcre2"
+(
+  cd pcre2
+  ./autogen.sh
+)
 
 log "clone boringssl"
 clone_module "https://github.com/google/boringssl" "boringssl"
@@ -157,7 +162,7 @@ log "configure nginx"
   --with-stream_ssl_module \
   --with-stream_ssl_preread_module \
   --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$BORINGSSL_DIR/include" \
-  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$LIBSSL_DIR -L$LIBCRYPTO_DIR -lssl -lcrypto -lstdc++" \
+  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie $LIBSSL_A $LIBCRYPTO_A -lstdc++" \
   --with-pcre="modules/pcre2" \
   --with-pcre-jit \
   --with-zlib=modules/zlib \
