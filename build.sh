@@ -87,7 +87,7 @@ make -C zlib -f Makefile.in distclean >/dev/null 2>&1 || true
 
 log "clone pcre2"
 # download_and_extract "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$PCRE2_VERSION/pcre2-$PCRE2_VERSION.tar.gz"
-clone_module https://github.com/PCRE2Project/pcre2 "pcre2"
+clone_module https://github.com/PCRE2Project/pcre2 "pcre2" "submodules"
 (
   cd pcre2
   ./autogen.sh
