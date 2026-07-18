@@ -17,11 +17,11 @@ jobs:
       CCACHE_NOHASHDIR: true
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Restore compile cache
         id: restore-ccache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ runner.os }}-ccache-${{ hashFiles('build.sh', '.github/workflows/main.yml') }}-${{ github.run_id }}
@@ -44,7 +44,7 @@ jobs:
 
       - name: Save compile cache
         if: success() && steps.restore-ccache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
