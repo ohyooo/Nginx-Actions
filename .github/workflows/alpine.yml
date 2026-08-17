@@ -201,7 +201,7 @@ jobs:
         run: |
           set -eux
 
-          chmod 755 nginx
+          #chmod 755 nginx
 
           tar \
             -czvf \
