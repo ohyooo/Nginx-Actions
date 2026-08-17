@@ -2,9 +2,13 @@ name: Nginx Alpine CI
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+
   workflow_dispatch:
 
 jobs:
@@ -12,23 +16,43 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      ALPINE_VERSION: "3.24"
+
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 2G
       CCACHE_BASEDIR: /work
-      CCACHE_NOHASHDIR: true
+      CCACHE_NOHASHDIR: "true"
 
     steps:
-      - uses: actions/checkout@v7
+      # ------------------------------------------------------------
+      # Checkout
+      # ------------------------------------------------------------
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # ------------------------------------------------------------
+      # Restore ccache
+      # ------------------------------------------------------------
 
       - name: Restore compile cache
         id: restore-ccache
         uses: actions/cache/restore@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: alpine-3.24-${{ runner.arch }}-ccache-${{ hashFiles('build.sh', '.github/workflows/main.yml') }}-${{ github.run_id }}
+
+          key: >-
+            alpine-${{ env.ALPINE_VERSION }}-${{ runner.arch }}-ccache-${{
+            hashFiles('build_alpine.sh', '.github/workflows/alpine.yml')
+            }}-${{ github.run_id }}
+
           restore-keys: |
-            alpine-3.24-${{ runner.arch }}-ccache-${{ hashFiles('build.sh', '.github/workflows/main.yml') }}-
-            alpine-3.24-${{ runner.arch }}-ccache-
+            alpine-${{ env.ALPINE_VERSION }}-${{ runner.arch }}-ccache-${{ hashFiles('build_alpine.sh', '.github/workflows/alpine.yml') }}-
+            alpine-${{ env.ALPINE_VERSION }}-${{ runner.arch }}-ccache-
+
+      # ------------------------------------------------------------
+      # Build inside Alpine
+      # ------------------------------------------------------------
 
       - name: Build Nginx on Alpine
         run: |
@@ -39,30 +63,159 @@ jobs:
             -e CCACHE_MAXSIZE="${CCACHE_MAXSIZE}" \
             -e CCACHE_BASEDIR=/work \
             -e CCACHE_NOHASHDIR=true \
-            alpine:3.24 \
+            "alpine:${ALPINE_VERSION}" \
             sh -euxc '
               apk add --no-cache bash
 
               bash ./build_alpine.sh
 
-              cp src/nginx-*/objs/nginx /work/nginx
+              echo
+              echo "========================================"
+              echo " nginx -V"
+              echo "========================================"
+              ./nginx -V
 
               echo
-              echo "===== nginx -V ====="
-              src/nginx-*/objs/nginx -V
+              echo "========================================"
+              echo " file"
+              echo "========================================"
+              file ./nginx
 
               echo
-              echo "===== file ====="
-              file /work/nginx
+              echo "========================================"
+              echo " readelf interpreter"
+              echo "========================================"
+              readelf -l ./nginx \
+                | grep "Requesting program interpreter" \
+                || true
 
               echo
-              echo "===== ldd ====="
-              ldd /work/nginx || true
+              echo "========================================"
+              echo " dynamic dependencies"
+              echo "========================================"
+              ldd ./nginx || true
 
               echo
-              echo "===== ccache ====="
+              echo "========================================"
+              echo " ccache"
+              echo "========================================"
               ccache --show-stats || true
             '
+
+      # ------------------------------------------------------------
+      # Check artifact
+      # ------------------------------------------------------------
+
+      - name: Check build artifact
+        run: |
+          set -eux
+
+          test -f nginx
+          test -x nginx
+
+          ls -lh nginx
+          file nginx
+
+      # ------------------------------------------------------------
+      # IMPORTANT:
+      # Test inside a completely clean Alpine container.
+      #
+      # No apk add here.
+      # This verifies nginx works without libstdc++, libgcc,
+      # openssl, pcre2, zlib, brotli, etc.
+      # ------------------------------------------------------------
+
+      - name: Test on clean Alpine
+        run: |
+          set -eux
+
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}/nginx:/nginx:ro" \
+            "alpine:${ALPINE_VERSION}" \
+            /nginx -V
+
+      # ------------------------------------------------------------
+      # Check dynamic libraries in clean Alpine
+      # ------------------------------------------------------------
+
+      - name: Verify runtime dependencies
+        run: |
+          set -eux
+
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}/nginx:/nginx:ro" \
+            "alpine:${ALPINE_VERSION}" \
+            sh -euxc '
+              echo
+              echo "========================================"
+              echo " ldd /nginx"
+              echo "========================================"
+
+              ldd /nginx
+
+              echo
+              echo "========================================"
+              echo " verify forbidden libraries"
+              echo "========================================"
+
+              LDD_OUTPUT="$(ldd /nginx 2>&1 || true)"
+
+              FORBIDDEN_LIBS="
+              libstdc++.so
+              libgcc_s.so
+              libssl.so
+              libcrypto.so
+              libpcre
+              libz.so
+              libbrotli
+              "
+
+              FAILED=0
+
+              for lib in $FORBIDDEN_LIBS; do
+                if printf "%s\n" "$LDD_OUTPUT" | grep -Fq "$lib"; then
+                  echo "ERROR: unwanted runtime dependency: $lib"
+                  FAILED=1
+                fi
+              done
+
+              if [ "$FAILED" -ne 0 ]; then
+                echo
+                echo "ERROR: nginx has unwanted dynamic dependencies"
+                exit 1
+              fi
+
+              echo
+              echo "Runtime dependency check passed."
+            '
+
+      # ------------------------------------------------------------
+      # Package
+      #
+      # Important:
+      # upload-artifact itself does not preserve executable
+      # permissions, so package nginx into tar.gz first.
+      # ------------------------------------------------------------
+
+      - name: Package artifact
+        run: |
+          set -eux
+
+          chmod 755 nginx
+
+          tar \
+            -czvf \
+            "nginx-alpine-${ALPINE_VERSION}-${{ runner.arch }}.tar.gz" \
+            nginx \
+            NGINX_VERSION
+
+          tar \
+            -tvf \
+            "nginx-alpine-${ALPINE_VERSION}-${{ runner.arch }}.tar.gz"
+
+      # ------------------------------------------------------------
+      # Save ccache
+      # ------------------------------------------------------------
 
       - name: Save compile cache
         if: success() && steps.restore-ccache.outputs.cache-hit != 'true'
@@ -71,9 +224,14 @@ jobs:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
 
+      # ------------------------------------------------------------
+      # Upload
+      # ------------------------------------------------------------
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: nginx-alpine-${{ runner.arch }}
-          path: nginx
+          name: nginx-alpine-${{ env.ALPINE_VERSION }}-${{ runner.arch }}
+          path: nginx-alpine-${{ env.ALPINE_VERSION }}-${{ runner.arch }}.tar.gz
           if-no-files-found: error
+          retention-days: 30
