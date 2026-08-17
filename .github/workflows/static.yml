@@ -1,0 +1,300 @@
+name: Nginx Static CI
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      ALPINE_VERSION: "3.24"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-static
+      CCACHE_MAXSIZE: 2G
+      CCACHE_BASEDIR: /work
+      CCACHE_NOHASHDIR: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Restore compile cache
+        id: restore-ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: static-alpine-${{ env.ALPINE_VERSION }}-${{ runner.arch }}-ccache-${{ hashFiles('build_static.sh', '.github/workflows/static.yml') }}-${{ github.run_id }}
+          restore-keys: |
+            static-alpine-${{ env.ALPINE_VERSION }}-${{ runner.arch }}-ccache-${{ hashFiles('build_static.sh', '.github/workflows/static.yml') }}-
+            static-alpine-${{ env.ALPINE_VERSION }}-${{ runner.arch }}-ccache-
+
+      - name: Build fully static Nginx
+        run: |
+          set -eux
+
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w /work \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e CCACHE_DIR=/work/.ccache-static \
+            -e CCACHE_MAXSIZE="${CCACHE_MAXSIZE}" \
+            -e CCACHE_BASEDIR=/work \
+            -e CCACHE_NOHASHDIR=true \
+            "alpine:${ALPINE_VERSION}" \
+            sh -euxc '
+              apk add --no-cache bash
+
+              bash ./build_static.sh
+
+              echo
+              echo "========================================"
+              echo " nginx-static -V"
+              echo "========================================"
+              ./nginx-static -V
+
+              echo
+              echo "========================================"
+              echo " file"
+              echo "========================================"
+              file ./nginx-static
+
+              echo
+              echo "========================================"
+              echo " PT_INTERP"
+              echo "========================================"
+              if readelf -l ./nginx-static | grep "Requesting program interpreter"; then
+                echo "ERROR: static binary has PT_INTERP"
+                exit 1
+              fi
+
+              echo
+              echo "========================================"
+              echo " DT_NEEDED"
+              echo "========================================"
+              if readelf -d ./nginx-static | grep "(NEEDED)"; then
+                echo "ERROR: static binary has DT_NEEDED entries"
+                exit 1
+              fi
+
+              echo
+              echo "========================================"
+              echo " ldd (failure is expected for static ELF)"
+              echo "========================================"
+              ldd ./nginx-static || true
+
+              echo
+              echo "========================================"
+              echo " ccache"
+              echo "========================================"
+              ccache --show-stats || true
+
+              # Files created in the bind mount are root-owned unless we return
+              # ownership to the GitHub runner before the container exits.
+              chmod 0755 /work/nginx-static
+              chown "$HOST_UID:$HOST_GID" \
+                /work/nginx-static \
+                /work/nginx-static.sha256 \
+                /work/NGINX_VERSION
+
+              if [ -d /work/.ccache-static ]; then
+                chown -R "$HOST_UID:$HOST_GID" /work/.ccache-static
+              fi
+            '
+
+      - name: Check build artifact
+        run: |
+          set -eux
+
+          test -f nginx-static
+          test -x nginx-static
+          test -f nginx-static.sha256
+          test -f NGINX_VERSION
+
+          ls -lh nginx-static nginx-static.sha256 NGINX_VERSION
+          sha256sum -c nginx-static.sha256
+
+      - name: Build scratch smoke-test image
+        run: |
+          set -eux
+
+          rm -rf .static-smoke
+          mkdir -p \
+            .static-smoke/runtime/client_temp \
+            .static-smoke/runtime/proxy_temp \
+            .static-smoke/runtime/fastcgi_temp \
+            .static-smoke/runtime/uwsgi_temp \
+            .static-smoke/runtime/scgi_temp \
+            .static-smoke/certs
+
+          cp nginx-static .static-smoke/nginx
+
+          # Keep otherwise-empty runtime directories in the Docker build context.
+          touch \
+            .static-smoke/runtime/client_temp/.keep \
+            .static-smoke/runtime/proxy_temp/.keep \
+            .static-smoke/runtime/fastcgi_temp/.keep \
+            .static-smoke/runtime/uwsgi_temp/.keep \
+            .static-smoke/runtime/scgi_temp/.keep
+
+          # Generate an ephemeral certificate only for CI runtime validation.
+          openssl req \
+            -x509 \
+            -newkey rsa:2048 \
+            -sha256 \
+            -nodes \
+            -days 1 \
+            -subj "/CN=localhost" \
+            -keyout .static-smoke/certs/key.pem \
+            -out .static-smoke/certs/cert.pem
+
+          cat > .static-smoke/nginx.conf <<'NGINX_CONF'
+          worker_processes 1;
+          pid /runtime/nginx.pid;
+          lock_file /runtime/nginx.lock;
+          error_log stderr notice;
+
+          events {
+              worker_connections 32;
+          }
+
+          http {
+              access_log off;
+
+              client_body_temp_path /runtime/client_temp;
+              proxy_temp_path       /runtime/proxy_temp;
+              fastcgi_temp_path     /runtime/fastcgi_temp;
+              uwsgi_temp_path       /runtime/uwsgi_temp;
+              scgi_temp_path        /runtime/scgi_temp;
+
+              brotli on;
+              brotli_min_length 1;
+              brotli_types text/plain;
+
+              server {
+                  listen 8080;
+                  listen 8443 ssl;
+                  server_name localhost;
+
+                  ssl_certificate     /certs/cert.pem;
+                  ssl_certificate_key /certs/key.pem;
+
+                  location / {
+                      default_type text/plain;
+                      return 200 "static-nginx-ok\n";
+                  }
+              }
+          }
+          NGINX_CONF
+
+          cat > .static-smoke/Dockerfile <<'DOCKERFILE'
+          FROM scratch
+          COPY nginx /nginx
+          COPY nginx.conf /nginx.conf
+          COPY --chown=65534:65534 runtime /runtime
+          COPY --chown=65534:65534 certs /certs
+          USER 65534:65534
+          ENTRYPOINT ["/nginx"]
+          DOCKERFILE
+
+          docker build \
+            --no-cache \
+            -t nginx-static-smoke:${{ github.sha }} \
+            .static-smoke
+
+      - name: Test static binary in scratch
+        run: |
+          set -eux
+
+          IMAGE="nginx-static-smoke:${GITHUB_SHA}"
+
+          # Basic ELF/process startup in a zero-file base image.
+          docker run --rm "$IMAGE" -V
+
+          # Parse a real nginx config. This exercises substantially more than -V.
+          docker run --rm \
+            "$IMAGE" \
+            -t \
+            -p / \
+            -c /nginx.conf \
+            -e stderr
+
+          cleanup() {
+            docker rm -f nginx-static-runtime >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d \
+            --name nginx-static-runtime \
+            -p 127.0.0.1:18080:8080 \
+            -p 127.0.0.1:18443:8443 \
+            "$IMAGE" \
+            -p / \
+            -c /nginx.conf \
+            -e stderr \
+            -g 'daemon off;'
+
+          ok=0
+          for _ in $(seq 1 20); do
+            if [ "$(curl -fsS http://127.0.0.1:18080/)" = "static-nginx-ok" ]; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$ok" -ne 1 ]; then
+            docker logs nginx-static-runtime || true
+            exit 1
+          fi
+
+          # Exercise BoringSSL through a real TLS request.
+          test "$(curl -kfsS https://127.0.0.1:18443/)" = "static-nginx-ok"
+
+          # Exercise the statically linked Brotli encoder.
+          curl -fsS \
+            -H 'Accept-Encoding: br' \
+            -D .static-smoke/headers.txt \
+            -o /dev/null \
+            http://127.0.0.1:18080/
+
+          grep -qi '^Content-Encoding: br' .static-smoke/headers.txt
+
+          docker logs nginx-static-runtime || true
+
+      - name: Package artifact
+        run: |
+          set -eux
+
+          ARCHIVE="nginx-static-alpine-${ALPINE_VERSION}-${{ runner.arch }}.tar.gz"
+
+          tar \
+            -czvf "$ARCHIVE" \
+            nginx-static \
+            nginx-static.sha256 \
+            NGINX_VERSION
+
+          tar -tvf "$ARCHIVE"
+
+      - name: Save compile cache
+        if: success() && steps.restore-ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nginx-static-alpine-${{ env.ALPINE_VERSION }}-${{ runner.arch }}
+          path: nginx-static-alpine-${{ env.ALPINE_VERSION }}-${{ runner.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 30
