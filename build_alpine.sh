@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 NGINX_VERSION="${NGINX_VERSION:-1.31.3}"
 
-ROOT_DIR="$(pwd)"
-SRC_DIR="$ROOT_DIR/src"
-NPROC="${NPROC:-$(nproc)}"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SRC_DIR="${SRC_DIR:-$ROOT_DIR/src}"
+NPROC="${NPROC:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)}"
 
 log() {
   printf '\n>>> %s\n' "$*"
+}
+
+fail() {
+  printf '\nERROR: %s\n' "$*" >&2
+  exit 1
 }
 
 clone_module() {
@@ -49,82 +54,108 @@ download_and_extract() {
   tar -xf "$out"
 }
 
+
+# =============================================================================
+# Alpine
+# =============================================================================
+
+log "verify Alpine build environment"
+
+if ! command -v apk >/dev/null 2>&1; then
+  fail "build_alpine.sh must run inside Alpine Linux"
+fi
+
+
+# =============================================================================
+# Build dependencies
+# =============================================================================
+
 log "install build dependencies"
 
-if command -v apk >/dev/null 2>&1; then
-  # Alpine
-  apk add --no-cache \
-    bash \
-    build-base \
-    linux-headers \
-    git \
-    wget \
-    curl \
-    ca-certificates \
-    perl \
-    cmake \
-    samurai \
-    pkgconf \
-    autoconf \
-    automake \
-    libtool \
-    ccache \
-    go \
-    binutils
-else
-  # Debian / Ubuntu
-  sudo apt update
+apk add --no-cache \
+  bash \
+  build-base \
+  linux-headers \
+  git \
+  wget \
+  curl \
+  ca-certificates \
+  perl \
+  cmake \
+  samurai \
+  pkgconf \
+  autoconf \
+  automake \
+  libtool \
+  ccache \
+  go \
+  binutils \
+  libstdc++-dev \
+  libgcc-static
 
-  sudo apt install -y \
-    build-essential \
-    git \
-    wget \
-    curl \
-    ca-certificates \
-    perl \
-    cmake \
-    ninja-build \
-    pkg-config \
-    autoconf \
-    automake \
-    libtool \
-    ccache \
-    golang-go \
-    binutils
-fi
+
+# =============================================================================
+# ccache
+# =============================================================================
 
 if command -v ccache >/dev/null 2>&1; then
   if [ -d /usr/lib/ccache/bin ]; then
     export PATH="/usr/lib/ccache/bin:$PATH"
-  elif [ -d /usr/lib/ccache ]; then
-    export PATH="/usr/lib/ccache:$PATH"
   fi
 
   ccache --set-config=max_size="${CCACHE_MAXSIZE:-2G}"
 fi
+
+
+# =============================================================================
+# Static GCC / C++ runtime
+# =============================================================================
+
+log "verify static GCC/C++ runtimes"
+
+LIBSTDCXX_A="$(g++ -print-file-name=libstdc++.a)"
+LIBGCC_A="$(gcc -print-libgcc-file-name)"
+
+[ -f "$LIBSTDCXX_A" ] || \
+  fail "static libstdc++ not found: $LIBSTDCXX_A"
+
+[ -f "$LIBGCC_A" ] || \
+  fail "static libgcc not found: $LIBGCC_A"
+
+printf 'libstdc++ static: %s\n' "$LIBSTDCXX_A"
+printf 'libgcc static:   %s\n' "$LIBGCC_A"
+
+
+# =============================================================================
+# Source directory
+# =============================================================================
 
 log "prepare source directory"
 
 mkdir -p "$SRC_DIR"
 cd "$SRC_DIR"
 
-#
+
+# =============================================================================
 # nginx
-#
+# =============================================================================
 
 log "download nginx-$NGINX_VERSION"
 
 download_and_extract \
   "https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
-cd "$SRC_DIR/nginx-$NGINX_VERSION"
+NGINX_SRC_DIR="$SRC_DIR/nginx-$NGINX_VERSION"
+MODULES_DIR="$NGINX_SRC_DIR/modules"
 
-mkdir -p modules
-cd modules
+mkdir -p "$MODULES_DIR"
 
-#
+cd "$MODULES_DIR"
+
+
+# =============================================================================
 # ngx_brotli
-#
+# =============================================================================
 
 log "clone ngx_brotli"
 
@@ -133,23 +164,72 @@ clone_module \
   "ngx_brotli" \
   "submodules"
 
-#
-# Cloudflare zlib
-#
+BROTLI_DIR="$MODULES_DIR/ngx_brotli/deps/brotli"
+BROTLI_BUILD_DIR="$BROTLI_DIR/out"
 
-log "clone cloudflare zlib"
+[ -f "$BROTLI_DIR/c/include/brotli/encode.h" ] || \
+  fail "ngx_brotli Brotli submodule is missing"
+
+
+# =============================================================================
+# Build Brotli static libraries
+# =============================================================================
+
+log "build Brotli static libraries"
+
+cmake \
+  -S "$BROTLI_DIR" \
+  -B "$BROTLI_BUILD_DIR" \
+  -GNinja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DBROTLI_BUILD_TOOLS=OFF \
+  -DBROTLI_DISABLE_TESTS=ON \
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+
+cmake \
+  --build "$BROTLI_BUILD_DIR" \
+  --parallel "$NPROC" \
+  --target brotlienc
+
+BROTLI_ENC_A="$BROTLI_BUILD_DIR/libbrotlienc.a"
+BROTLI_COMMON_A="$BROTLI_BUILD_DIR/libbrotlicommon.a"
+
+[ -f "$BROTLI_ENC_A" ] || \
+  fail "libbrotlienc.a not found: $BROTLI_ENC_A"
+
+[ -f "$BROTLI_COMMON_A" ] || \
+  fail "libbrotlicommon.a not found: $BROTLI_COMMON_A"
+
+log "Brotli static libraries"
+
+ls -lh \
+  "$BROTLI_ENC_A" \
+  "$BROTLI_COMMON_A"
+
+
+# =============================================================================
+# Cloudflare zlib
+# =============================================================================
+
+log "clone Cloudflare zlib"
 
 clone_module \
   "https://github.com/cloudflare/zlib" \
   "zlib"
 
-make -C zlib -f Makefile.in distclean >/dev/null 2>&1 || true
+make \
+  -C zlib \
+  -f Makefile.in \
+  distclean \
+  >/dev/null 2>&1 || true
 
-#
+
+# =============================================================================
 # PCRE2
-#
+# =============================================================================
 
-log "clone pcre2"
+log "clone PCRE2"
 
 clone_module \
   "https://github.com/PCRE2Project/pcre2" \
@@ -164,47 +244,45 @@ clone_module \
   fi
 )
 
-#
-# BoringSSL
-#
 
-log "clone boringssl"
+# =============================================================================
+# BoringSSL
+# =============================================================================
+
+log "clone BoringSSL"
 
 clone_module \
   "https://github.com/google/boringssl" \
   "boringssl"
 
-log "build boringssl"
-
-(
-  cd boringssl
-
-  cmake \
-    -S . \
-    -B build \
-    -GNinja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-
-  cmake --build build -j"$NPROC"
-)
-
-#
-# nginx configure
-#
-
-cd "$SRC_DIR/nginx-$NGINX_VERSION"
-
-log "write nginx version file"
-
-echo "nginx version $NGINX_VERSION" \
-  | tee "$ROOT_DIR/NGINX_VERSION"
-
-BORINGSSL_DIR="$SRC_DIR/nginx-$NGINX_VERSION/modules/boringssl"
+BORINGSSL_DIR="$MODULES_DIR/boringssl"
 BORINGSSL_BUILD_DIR="$BORINGSSL_DIR/build"
 
-log "locate boringssl artifacts"
+
+# =============================================================================
+# Build BoringSSL
+# =============================================================================
+
+log "build BoringSSL static libraries"
+
+cmake \
+  -S "$BORINGSSL_DIR" \
+  -B "$BORINGSSL_BUILD_DIR" \
+  -GNinja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+
+cmake \
+  --build "$BORINGSSL_BUILD_DIR" \
+  --parallel "$NPROC"
+
+
+# =============================================================================
+# Locate BoringSSL
+# =============================================================================
+
+log "locate BoringSSL artifacts"
 
 LIBSSL_A="$(
   find "$BORINGSSL_BUILD_DIR" \
@@ -222,36 +300,89 @@ LIBCRYPTO_A="$(
     -quit
 )"
 
-if [ -z "$LIBSSL_A" ]; then
-  echo "ERROR: libssl.a not found under $BORINGSSL_BUILD_DIR"
-  exit 1
-fi
+[ -n "$LIBSSL_A" ] || \
+  fail "libssl.a not found under $BORINGSSL_BUILD_DIR"
 
-if [ -z "$LIBCRYPTO_A" ]; then
-  echo "ERROR: libcrypto.a not found under $BORINGSSL_BUILD_DIR"
-  exit 1
-fi
+[ -n "$LIBCRYPTO_A" ] || \
+  fail "libcrypto.a not found under $BORINGSSL_BUILD_DIR"
 
-log "boringssl libraries"
+[ -f "$BORINGSSL_DIR/include/openssl/ssl.h" ] || \
+  fail "BoringSSL headers not found"
 
-echo "libssl:"
-echo "  $LIBSSL_A"
+log "BoringSSL static libraries"
 
-echo "libcrypto:"
-echo "  $LIBCRYPTO_A"
+printf 'libssl:    %s\n' "$LIBSSL_A"
+printf 'libcrypto: %s\n' "$LIBCRYPTO_A"
 
+
+# =============================================================================
+# nginx
+# =============================================================================
+
+cd "$NGINX_SRC_DIR"
+
+log "write nginx version file"
+
+printf 'nginx version %s\n' "$NGINX_VERSION" \
+  | tee "$ROOT_DIR/NGINX_VERSION"
+
+
+# =============================================================================
+# Compiler / linker options
+# =============================================================================
 #
-# Static C++ runtime
+# Important:
 #
-# BoringSSL uses C++, but nginx itself is linked using gcc/cc.
+# Nginx's OpenSSL detection itself appends:
 #
-# Explicitly switch the linker to static mode for libstdc++,
-# then switch back to dynamic mode so musl remains dynamically linked.
+#   -lssl -lcrypto
 #
-# -static-libgcc makes GCC runtime static as well.
+# Therefore:
+#
+#   -L$BORINGSSL_BUILD_DIR
+#
+# is required so those names resolve to BoringSSL.
+#
+# We also explicitly put:
+#
+#   libssl.a
+#   libcrypto.a
+#   libstdc++.a
+#
+# in this order so BoringSSL C++ references are resolved before the static
+# C++ runtime is processed.
+#
+# libgcc is made static with -static-libgcc.
+#
+# musl remains dynamically linked.
 #
 
-STATIC_CXX_LDFLAGS="-Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -static-libgcc"
+NGINX_CC_OPT="\
+-O2 \
+-fstack-protector-strong \
+-Wformat \
+-Werror=format-security \
+-fPIC \
+-U_FORTIFY_SOURCE \
+-D_FORTIFY_SOURCE=3 \
+-I$BORINGSSL_DIR/include"
+
+NGINX_LD_OPT="\
+-Wl,-Bsymbolic-functions \
+-Wl,-z,relro \
+-Wl,-z,now \
+-Wl,--as-needed \
+-pie \
+-L$BORINGSSL_BUILD_DIR \
+$LIBSSL_A \
+$LIBCRYPTO_A \
+$LIBSTDCXX_A \
+-static-libgcc"
+
+
+# =============================================================================
+# Configure nginx
+# =============================================================================
 
 log "configure nginx"
 
@@ -294,160 +425,210 @@ log "configure nginx"
   --with-stream_realip_module \
   --with-stream_ssl_module \
   --with-stream_ssl_preread_module \
-  --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$BORINGSSL_DIR/include" \
-  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$BORINGSSL_BUILD_DIR $LIBSSL_A $LIBCRYPTO_A $STATIC_CXX_LDFLAGS" \
+  --with-cc-opt="$NGINX_CC_OPT" \
+  --with-ld-opt="$NGINX_LD_OPT" \
   --with-pcre="modules/pcre2" \
+  --with-pcre-opt="-O2 -fPIC" \
   --with-pcre-jit \
   --with-zlib="modules/zlib" \
+  --with-zlib-opt="-O2 -fPIC" \
   --add-module="modules/ngx_brotli"
 
-#
+
+# =============================================================================
 # Build nginx
-#
+# =============================================================================
 
 log "build nginx"
 
 make -j"$NPROC"
 
-NGINX_BIN="$SRC_DIR/nginx-$NGINX_VERSION/objs/nginx"
+NGINX_BIN="$NGINX_SRC_DIR/objs/nginx"
 
-if [ ! -x "$NGINX_BIN" ]; then
-  echo "ERROR: nginx binary not found"
-  exit 1
-fi
+[ -x "$NGINX_BIN" ] || \
+  fail "nginx binary not found: $NGINX_BIN"
 
-#
-# Show information
-#
 
-log "show nginx version info"
+# =============================================================================
+# nginx -V
+# =============================================================================
+
+log "nginx version info"
 
 "$NGINX_BIN" -V
+
+
+# =============================================================================
+# ELF information
+# =============================================================================
 
 log "binary information"
 
 file "$NGINX_BIN"
 
-#
-# Runtime dependency verification
-#
 
-log "check runtime dependencies"
+# =============================================================================
+# Verify musl interpreter
+# =============================================================================
+
+log "verify musl ELF interpreter"
+
+INTERP="$(
+  readelf -l "$NGINX_BIN" \
+    | grep 'Requesting program interpreter' \
+    || true
+)"
+
+printf '%s\n' "$INTERP"
+
+printf '%s\n' "$INTERP" \
+  | grep -Fq 'ld-musl-' \
+  || fail "nginx is not linked against the musl dynamic loader"
+
+
+# =============================================================================
+# ldd
+# =============================================================================
+
+log "dynamic dependencies"
 
 LDD_OUTPUT="$(ldd "$NGINX_BIN" 2>&1 || true)"
 
 printf '%s\n' "$LDD_OUTPUT"
 
+
+# =============================================================================
+# Strong runtime dependency verification
+# =============================================================================
 #
-# These libraries must NOT be dynamically linked.
+# Goal:
+#
+# The final binary may only dynamically depend on musl libc.
+#
+# Everything else must be statically included.
 #
 
-FORBIDDEN_LIBS='
-libstdc++.so
-libgcc_s.so
-libssl.so
-libcrypto.so
-libpcre
-libz.so
-libbrotli
-'
+log "verify that musl is the only dynamic runtime dependency"
+
+NEEDED_LIBS="$(
+  readelf -d "$NGINX_BIN" \
+    | sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p'
+)"
+
+if [ -z "$NEEDED_LIBS" ]; then
+  fail "no DT_NEEDED entries found; expected a dynamically linked musl binary"
+fi
 
 FAILED=0
 
 while IFS= read -r lib; do
   [ -n "$lib" ] || continue
 
-  if printf '%s\n' "$LDD_OUTPUT" | grep -Fq "$lib"; then
-    echo
-    echo "ERROR: unwanted dynamic dependency detected:"
-    echo "  $lib"
-    FAILED=1
-  fi
-done <<< "$FORBIDDEN_LIBS"
+  case "$lib" in
+    libc.musl-*.so.1)
+      printf 'allowed: %s\n' "$lib"
+      ;;
+
+    *)
+      printf \
+        'ERROR: unwanted dynamic dependency: %s\n' \
+        "$lib" \
+        >&2
+
+      FAILED=1
+      ;;
+  esac
+done <<< "$NEEDED_LIBS"
 
 if [ "$FAILED" -ne 0 ]; then
-  echo
-  echo "ERROR: nginx still has unwanted dynamic runtime dependencies."
-  exit 1
+  fail "nginx has runtime dependencies that are not present in a clean Alpine base image"
 fi
 
-#
-# Alpine/musl verification
-#
 
-if command -v apk >/dev/null 2>&1; then
-  log "verify musl interpreter"
+# =============================================================================
+# Extra sanity check
+# =============================================================================
 
-  INTERP="$(
-    readelf -l "$NGINX_BIN" \
-      | grep 'Requesting program interpreter' \
-      || true
-  )"
+FORBIDDEN_PATTERNS='libstdc++.so
+libgcc_s.so
+libssl.so
+libcrypto.so
+libpcre
+libz.so
+libbrotli'
 
-  printf '%s\n' "$INTERP"
+while IFS= read -r pattern; do
+  [ -n "$pattern" ] || continue
 
-  if ! printf '%s\n' "$INTERP" | grep -Fq 'ld-musl-'; then
-    echo
-    echo "ERROR: nginx is not linked against musl"
-    exit 1
+  if printf '%s\n' "$LDD_OUTPUT" \
+    | grep -Fq "$pattern"
+  then
+    fail "unexpected dynamic dependency detected: $pattern"
   fi
-fi
+done <<< "$FORBIDDEN_PATTERNS"
 
-#
-# Copy final artifact
-#
+
+# =============================================================================
+# Copy artifact
+# =============================================================================
 
 log "copy final nginx binary"
 
-cp -f "$NGINX_BIN" "$ROOT_DIR/nginx"
-chmod +x "$ROOT_DIR/nginx"
+cp -f \
+  "$NGINX_BIN" \
+  "$ROOT_DIR/nginx"
 
-#
-# Size
-#
+chmod 0755 "$ROOT_DIR/nginx"
 
-log "binary size"
+
+# =============================================================================
+# Artifact information
+# =============================================================================
+
+log "final artifact"
 
 ls -lh "$ROOT_DIR/nginx"
 
-#
+
+# =============================================================================
 # ccache stats
-#
+# =============================================================================
 
 if command -v ccache >/dev/null 2>&1; then
   log "ccache stats"
+
   ccache --show-stats || true
 fi
+
+
+# =============================================================================
+# Done
+# =============================================================================
 
 cat <<EOF
 
 ============================================================
-编译完成
 
-原始二进制：
+Build complete.
+
+Original binary:
   $NGINX_BIN
 
-最终二进制：
+Final binary:
   $ROOT_DIR/nginx
 
-目标：
-  Alpine musl 动态链接
-  BoringSSL 静态链接
-  PCRE2 静态链接
-  Cloudflare zlib 静态链接
-  brotli 静态链接
-  libstdc++ 静态链接
-  libgcc 静态链接
+Expected runtime model:
 
-空白 Alpine 中无需安装：
-  libstdc++
-  libgcc
-  openssl
-  pcre2
-  zlib
-  brotli
+  musl             dynamic (provided by Alpine base image)
 
-验证：
+  BoringSSL        static
+  PCRE2            static
+  Cloudflare zlib  static
+  Brotli           static
+  libstdc++        static
+  libgcc           static
+
+Clean Alpine smoke test:
 
   docker run --rm \\
     -v "$ROOT_DIR/nginx:/nginx:ro" \\
