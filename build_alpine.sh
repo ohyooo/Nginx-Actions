@@ -251,12 +251,7 @@ echo "  $LIBCRYPTO_A"
 # -static-libgcc makes GCC runtime static as well.
 #
 
-STATIC_CXX_LDFLAGS="
--Wl,-Bstatic
--lstdc++
--Wl,-Bdynamic
--static-libgcc
-"
+STATIC_CXX_LDFLAGS="-Wl,-Bstatic -lstdc++ -Wl,-Bdynamic -static-libgcc"
 
 log "configure nginx"
 
@@ -299,24 +294,8 @@ log "configure nginx"
   --with-stream_realip_module \
   --with-stream_ssl_module \
   --with-stream_ssl_preread_module \
-  --with-cc-opt="\
--O2 \
--fstack-protector-strong \
--Wformat \
--Werror=format-security \
--fPIC \
--U_FORTIFY_SOURCE \
--D_FORTIFY_SOURCE=3 \
--I$BORINGSSL_DIR/include" \
-  --with-ld-opt="\
--Wl,-Bsymbolic-functions \
--Wl,-z,relro \
--Wl,-z,now \
--Wl,--as-needed \
--pie \
-$LIBSSL_A \
-$LIBCRYPTO_A \
-$STATIC_CXX_LDFLAGS" \
+  --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$BORINGSSL_DIR/include" \
+  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L$BORINGSSL_BUILD_DIR $LIBSSL_A $LIBCRYPTO_A $STATIC_CXX_LDFLAGS" \
   --with-pcre="modules/pcre2" \
   --with-pcre-jit \
   --with-zlib="modules/zlib" \
