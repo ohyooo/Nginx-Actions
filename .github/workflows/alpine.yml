@@ -1,0 +1,79 @@
+name: Nginx Alpine CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 2G
+      CCACHE_BASEDIR: /work
+      CCACHE_NOHASHDIR: true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Restore compile cache
+        id: restore-ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: alpine-3.24-${{ runner.arch }}-ccache-${{ hashFiles('build.sh', '.github/workflows/main.yml') }}-${{ github.run_id }}
+          restore-keys: |
+            alpine-3.24-${{ runner.arch }}-ccache-${{ hashFiles('build.sh', '.github/workflows/main.yml') }}-
+            alpine-3.24-${{ runner.arch }}-ccache-
+
+      - name: Build Nginx on Alpine
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w /work \
+            -e CCACHE_DIR=/work/.ccache \
+            -e CCACHE_MAXSIZE="${CCACHE_MAXSIZE}" \
+            -e CCACHE_BASEDIR=/work \
+            -e CCACHE_NOHASHDIR=true \
+            alpine:3.24 \
+            sh -euxc '
+              apk add --no-cache bash
+
+              bash ./build_alpine.sh
+
+              cp src/nginx-*/objs/nginx /work/nginx
+
+              echo
+              echo "===== nginx -V ====="
+              src/nginx-*/objs/nginx -V
+
+              echo
+              echo "===== file ====="
+              file /work/nginx
+
+              echo
+              echo "===== ldd ====="
+              ldd /work/nginx || true
+
+              echo
+              echo "===== ccache ====="
+              ccache --show-stats || true
+            '
+
+      - name: Save compile cache
+        if: success() && steps.restore-ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nginx-alpine-${{ runner.arch }}
+          path: nginx
+          if-no-files-found: error
