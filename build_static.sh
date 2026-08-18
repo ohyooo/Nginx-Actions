@@ -357,10 +357,10 @@ log "configure nginx"
   --with-cc-opt="$NGINX_CC_OPT" \
   --with-ld-opt="$NGINX_LD_OPT" \
   --with-pcre="modules/pcre2" \
-  --with-pcre-opt="-O2 -fno-pie -ffunction-sections -fdata-sections" \
+  --with-pcre-opt="-O2 -fno-pie -no-pie -ffunction-sections -fdata-sections" \
   --with-pcre-jit \
   --with-zlib="modules/zlib" \
-  --with-zlib-opt="-O2 -fno-pie -ffunction-sections -fdata-sections" \
+  --with-zlib-opt="-O2 -fno-pie -no-pie -ffunction-sections -fdata-sections" \
   --add-module="modules/ngx_brotli"
 
 # =============================================================================
