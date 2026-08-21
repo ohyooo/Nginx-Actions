@@ -161,15 +161,19 @@ log "configure nginx"
   --with-stream_realip_module \
   --with-stream_ssl_module \
   --with-stream_ssl_preread_module \
-  --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$BORINGSSL_DIR/include" \
-  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie $LIBSSL_A $LIBCRYPTO_A -lstdc++" \
+  --with-cc-opt="-O2 -fstack-protector-strong -Wformat -Werror=format-security -fPIC -ffunction-sections -fdata-sections -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -I$BORINGSSL_DIR/include" \
+  --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -Wl,--gc-sections -pie $LIBSSL_A $LIBCRYPTO_A -lstdc++" \
   --with-pcre="modules/pcre2" \
   --with-pcre-jit \
+  --with-pcre-opt="-O2 -fPIC -ffunction-sections -fdata-sections"
   --with-zlib=modules/zlib \
+  --with-zlib-opt="-O2 -fPIC -ffunction-sections -fdata-sections"
   --add-module=modules/ngx_brotli
 
 log "build nginx"
 make -j"$NPROC"
+
+strip --strip-unneeded objs/nginx
 
 log "show nginx version info"
 objs/nginx -V
