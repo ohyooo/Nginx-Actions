@@ -363,6 +363,8 @@ NGINX_CC_OPT="\
 -Wformat \
 -Werror=format-security \
 -fPIC \
+-ffunction-sections \
+-fdata-sections \
 -U_FORTIFY_SOURCE \
 -D_FORTIFY_SOURCE=3 \
 -I$BORINGSSL_DIR/include"
@@ -372,6 +374,7 @@ NGINX_LD_OPT="\
 -Wl,-z,relro \
 -Wl,-z,now \
 -Wl,--as-needed \
+-Wl,--gc-sections \
 -pie \
 -L$BORINGSSL_BUILD_DIR \
 $LIBSSL_A \
@@ -428,10 +431,10 @@ log "configure nginx"
   --with-cc-opt="$NGINX_CC_OPT" \
   --with-ld-opt="$NGINX_LD_OPT" \
   --with-pcre="modules/pcre2" \
-  --with-pcre-opt="-O2 -fPIC" \
+  --with-pcre-opt="-O2 -fPIC -ffunction-sections -fdata-sections" \
   --with-pcre-jit \
   --with-zlib="modules/zlib" \
-  --with-zlib-opt="-O2 -fPIC" \
+  --with-zlib-opt="-O2 -fPIC -ffunction-sections -fdata-sections" \
   --add-module="modules/ngx_brotli"
 
 
@@ -579,6 +582,8 @@ cp -f \
   "$ROOT_DIR/nginx"
 
 chmod 0755 "$ROOT_DIR/nginx"
+
+strip --strip-unneeded "$ROOT_DIR/nginx"
 
 
 # =============================================================================
