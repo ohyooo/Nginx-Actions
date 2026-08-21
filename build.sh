@@ -165,9 +165,9 @@ log "configure nginx"
   --with-ld-opt="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -Wl,--gc-sections -pie $LIBSSL_A $LIBCRYPTO_A -lstdc++" \
   --with-pcre="modules/pcre2" \
   --with-pcre-jit \
-  --with-pcre-opt="-O2 -fPIC -ffunction-sections -fdata-sections"
+  --with-pcre-opt="-O2 -fPIC -ffunction-sections -fdata-sections" \
   --with-zlib=modules/zlib \
-  --with-zlib-opt="-O2 -fPIC -ffunction-sections -fdata-sections"
+  --with-zlib-opt="-O2 -fPIC -ffunction-sections -fdata-sections" \
   --add-module=modules/ngx_brotli
 
 log "build nginx"
