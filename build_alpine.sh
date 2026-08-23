@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-NGINX_VERSION="${NGINX_VERSION:-1.31.3}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+NGINX_VERSION="$(cat "${SCRIPT_DIR}/NGINX_VERSION")"
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${SRC_DIR:-$ROOT_DIR/src}"
