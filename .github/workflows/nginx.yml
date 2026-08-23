@@ -1,0 +1,142 @@
+name: Nginx CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nginx-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ALPINE_VERSION: "3.24"
+  CCACHE_MAXSIZE: 2G
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: alpine
+            script: build_alpine.sh
+            artifact: nginx-alpine
+            output: nginx
+            static: false
+
+          - target: busybox
+            script: build_static.sh
+            artifact: nginx-busybox
+            output: nginx
+            static: true
+
+          - target: ubuntu
+            script: build_ubuntu.sh
+            artifact: nginx-ubuntu
+            output: nginx
+            static: false
+
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-${{ matrix.target }}
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_NOHASHDIR: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Restore ccache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: nginx-${{ matrix.target }}-${{ runner.arch }}-${{ hashFiles(matrix.script, '.github/workflows/nginx.yml') }}
+          restore-keys: |
+            nginx-${{ matrix.target }}-${{ runner.arch }}-
+
+      - name: Build in Alpine container
+        if: matrix.target != 'ubuntu'
+        run: |
+          set -eux
+
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w /work \
+            -e CCACHE_DIR=/work/.ccache-${{ matrix.target }} \
+            -e CCACHE_MAXSIZE="${CCACHE_MAXSIZE}" \
+            -e CCACHE_BASEDIR=/work \
+            -e CCACHE_NOHASHDIR=true \
+            alpine:${ALPINE_VERSION} \
+            sh -euxc '
+              apk add --no-cache bash ccache file binutils
+
+              bash ./${{ matrix.script }}
+
+              test -f "${{ matrix.target == 'busybox' && 'nginx-static' || 'nginx' }}"
+              chmod 0755 "${{ matrix.target == 'busybox' && 'nginx-static' || 'nginx' }}"
+
+              if [ "${{ matrix.target }}" = "busybox" ]; then
+                mv nginx-static "${{ matrix.output }}"
+              else
+                mv nginx "${{ matrix.output }}"
+              fi
+
+              ccache --show-stats || true
+            '
+
+      - name: Build Ubuntu
+        if: matrix.target == 'ubuntu'
+        run: |
+          set -eux
+
+          sudo apt update
+          sudo apt install -y ccache
+
+          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
+
+          ccache --set-config=max_size=${CCACHE_MAXSIZE}
+
+          bash ./${{ matrix.script }}
+
+          cp src/nginx-*/objs/nginx "${{ matrix.output }}"
+          chmod 0755 "${{ matrix.output }}"
+
+      - name: Prepare artifact
+        run: |
+          set -eux
+
+          test -x "${{ matrix.output }}"
+
+      - name: Verify binary
+        run: |
+          set -eux
+
+          ./${{ matrix.output }} -V
+
+          file "${{ matrix.output }}"
+
+          if [ "${{ matrix.static }}" = "true" ]; then
+            ! readelf -l "${{ matrix.output }}" | grep -q "Requesting program interpreter"
+            ! readelf -d "${{ matrix.output }}" | grep -q "(NEEDED)"
+          fi
+
+          sha256sum "${{ matrix.output }}" > "${{ matrix.output }}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.output }}
+            ${{ matrix.output }}.sha256
+            NGINX_VERSION
+          if-no-files-found: error
+          compression-level: 9
