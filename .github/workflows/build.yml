@@ -37,7 +37,7 @@ jobs:
             static: true
 
           - target: ubuntu
-            script: build.sh
+            script: build_ubuntu.sh
             artifact: nginx-ubuntu
             output: nginx
             static: false
