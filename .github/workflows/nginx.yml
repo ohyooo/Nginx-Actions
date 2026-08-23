@@ -33,17 +33,17 @@ jobs:
             output: nginx
             static: false
 
-          - target: busybox
-            script: build_static.sh
-            artifact: nginx-busybox
-            output: nginx
-            static: true
+          # - target: busybox
+          #   script: build_static.sh
+          #   artifact: nginx-busybox
+          #   output: nginx
+          #   static: true
 
-          - target: ubuntu
-            script: build_ubuntu.sh
-            artifact: nginx-ubuntu
-            output: nginx
-            static: false
+          # - target: ubuntu
+          #   script: build_ubuntu.sh
+          #   artifact: nginx-ubuntu
+          #   output: nginx
+          #   static: false
 
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache-${{ matrix.target }}
