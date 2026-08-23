@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ALPINE_VERSION: "3.24"
+  ALPINE_VERSION: "3"
   CCACHE_MAXSIZE: 2G
 
 jobs:
@@ -30,15 +30,15 @@ jobs:
             output: nginx
             static: false
 
-          - target: static
+          - target: busybox
             script: build_static.sh
-            artifact: nginx-static
-            output: nginx-static
+            artifact: nginx-busybox
+            output: nginx
             static: true
 
-          - target: main
+          - target: ubuntu
             script: build.sh
-            artifact: nginx-main
+            artifact: nginx-ubuntu
             output: nginx
             static: false
 
