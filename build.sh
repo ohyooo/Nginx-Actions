@@ -52,8 +52,15 @@ download_and_extract() {
 }
 
 log "install build dependencies"
-sudo apt update
-sudo apt install -y \
+if command -v sudo >/dev/null 2>&1; then
+  SUDO=sudo
+else
+  SUDO=""
+fi
+
+$SUDO apt update
+
+$SUDO apt install -y \
   build-essential \
   git \
   wget \
