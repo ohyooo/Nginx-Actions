@@ -333,7 +333,6 @@ log "configure nginx"
   --http-scgi-temp-path=/var/cache/nginx/scgi_temp \
   --user=nobody \
   --group=nobody \
-  --with-client_body_early_read \
   --with-compat \
   --with-file-aio \
   --with-threads \
