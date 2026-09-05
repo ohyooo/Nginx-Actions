@@ -2,9 +2,11 @@ name: Nginx Static CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -28,15 +30,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Restore ccache
-        uses: actions/cache@v6
+        uses: actions/cache@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: nginx-static-${{ runner.arch }}-${{ hashFiles('build_static.sh', '.github/workflows/nginx.yml') }}
+          key: nginx-static-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build_static.sh', 'NGINX_VERSION', '.gitmodules') }}
           restore-keys: |
-            nginx-static-${{ runner.arch }}-
+            nginx-static-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build static nginx
         run: |
@@ -51,7 +55,11 @@ jobs:
             -e CCACHE_NOHASHDIR=true \
             alpine:${ALPINE_VERSION} \
             sh -euxc '
-              apk add --no-cache bash ccache file binutils
+              apk add --no-cache \
+                bash \
+                ccache \
+                file \
+                binutils
 
               bash ./build_static.sh
 
@@ -60,6 +68,10 @@ jobs:
 
               ccache --show-stats || true
             '
+
+      - name: Fix permissions
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "${GITHUB_WORKSPACE}"
 
       - name: Verify binary
         run: |
@@ -70,13 +82,23 @@ jobs:
           ./nginx-static -V
           file nginx-static
 
-          ! readelf -l nginx-static | grep -q "Requesting program interpreter"
-          ! readelf -d nginx-static | grep -q "(NEEDED)"
+          if readelf -l nginx-static | grep -q "Requesting program interpreter"; then
+            echo "ERROR: nginx-static contains a dynamic program interpreter"
+            exit 1
+          fi
+
+          if readelf -d nginx-static 2>/dev/null | grep -q "(NEEDED)"; then
+            echo "ERROR: nginx-static contains dynamic library dependencies"
+            readelf -d nginx-static
+            exit 1
+          fi
 
           sha256sum nginx-static > nginx-static.sha256
 
+          cat nginx-static.sha256
+
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: nginx-static
           path: |
