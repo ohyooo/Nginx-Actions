@@ -12,98 +12,175 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: nginx-static-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
-  ALPINE_VERSION: "3.24"
-  CCACHE_MAXSIZE: 2G
-  CCACHE_DIR: ${{ github.workspace }}/.ccache-static
-  CCACHE_BASEDIR: ${{ github.workspace }}
-  CCACHE_NOHASHDIR: "true"
+  NGINX_VERSION: "1.31.5"
 
 jobs:
-  build-static:
-    name: Build static
+  build:
+    name: Build nginx
     runs-on: ubuntu-latest
 
+    container:
+      image: alpine:latest
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: nginx-static-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build_static.sh', 'NGINX_VERSION', '.gitmodules') }}
-          restore-keys: |
-            nginx-static-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Build static nginx
+      - name: Install dependencies
         run: |
           set -eux
 
-          docker run --rm \
-            -v "${GITHUB_WORKSPACE}:/work" \
-            -w /work \
-            -e CCACHE_DIR=/work/.ccache-static \
-            -e CCACHE_MAXSIZE="${CCACHE_MAXSIZE}" \
-            -e CCACHE_BASEDIR=/work \
-            -e CCACHE_NOHASHDIR=true \
-            alpine:${ALPINE_VERSION} \
-            sh -euxc '
-              apk add --no-cache \
-                bash \
-                ccache \
-                file \
-                binutils
+          apk add --no-cache \
+            bash \
+            build-base \
+            cmake \
+            ninja \
+            git \
+            wget \
+            tar \
+            perl \
+            linux-headers \
+            pcre2-dev \
+            pcre2-static \
+            zlib-dev \
+            zlib-static
 
-              bash ./build_static.sh
-
-              test -f nginx-static
-              chmod 0755 nginx-static
-
-              ccache --show-stats || true
-            '
-
-      - name: Fix permissions
+      - name: Build BoringSSL
         run: |
-          sudo chown -R "$(id -u):$(id -g)" "${GITHUB_WORKSPACE}"
+          set -eux
+
+          git clone \
+            --depth=1 \
+            https://boringssl.googlesource.com/boringssl \
+            /tmp/boringssl
+
+          cmake \
+            -S /tmp/boringssl \
+            -B /tmp/boringssl/build \
+            -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF
+
+          cmake --build /tmp/boringssl/build --parallel
+
+      - name: Download nginx
+        run: |
+          set -eux
+
+          wget -O /tmp/nginx.tar.gz \
+            "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz"
+
+          tar -C /tmp -xzf /tmp/nginx.tar.gz
+
+      - name: Configure nginx
+        working-directory: /tmp
+        run: |
+          set -eux
+
+          cd "nginx-${NGINX_VERSION}"
+
+          ./configure \
+            --prefix=/etc/nginx \
+            --sbin-path=/usr/sbin/nginx \
+            --modules-path=/usr/lib/nginx/modules \
+            --conf-path=/etc/nginx/nginx.conf \
+            --error-log-path=/var/log/nginx/error.log \
+            --http-log-path=/var/log/nginx/access.log \
+            --pid-path=/run/nginx.pid \
+            --lock-path=/run/nginx.lock \
+            --http-client-body-temp-path=/var/cache/nginx/client_temp \
+            --http-proxy-temp-path=/var/cache/nginx/proxy_temp \
+            --http-fastcgi-temp-path=/var/cache/nginx/fastcgi_temp \
+            --http-uwsgi-temp-path=/var/cache/nginx/uwsgi_temp \
+            --http-scgi-temp-path=/var/cache/nginx/scgi_temp \
+            \
+            --with-cc-opt="-Os -I/tmp/boringssl/include" \
+            --with-ld-opt="-static -L/tmp/boringssl/build/ssl -L/tmp/boringssl/build/crypto -lstdc++ -pthread" \
+            \
+            --with-threads \
+            --with-file-aio \
+            \
+            --with-http_ssl_module \
+            --with-http_v2_module \
+            --with-http_v3_module \
+            --with-http_realip_module \
+            --with-http_addition_module \
+            --with-http_sub_module \
+            --with-http_dav_module \
+            --with-http_flv_module \
+            --with-http_mp4_module \
+            --with-http_gunzip_module \
+            --with-http_gzip_static_module \
+            --with-http_auth_request_module \
+            --with-http_random_index_module \
+            --with-http_secure_link_module \
+            --with-http_slice_module \
+            --with-http_stub_status_module \
+            --with-http_json_module \
+            \
+            --with-stream \
+            --with-stream_ssl_module \
+            --with-stream_ssl_preread_module \
+            --with-stream_realip_module
+
+      - name: Build nginx
+        working-directory: /tmp
+        run: |
+          set -eux
+
+          cd "nginx-${NGINX_VERSION}"
+
+          make -j"$(nproc)"
+
+          cp objs/nginx "$GITHUB_WORKSPACE/nginx"
+          chmod +x "$GITHUB_WORKSPACE/nginx"
 
       - name: Verify binary
         run: |
           set -eux
 
-          test -x nginx-static
+          test -x nginx
 
-          ./nginx-static -V
-          file nginx-static
+          ./nginx -V
 
-          if readelf -l nginx-static | grep -q "Requesting program interpreter"; then
-            echo "ERROR: nginx-static contains a dynamic program interpreter"
+          echo
+          echo "=== file ==="
+          file nginx
+
+          echo
+          echo "=== dynamic dependencies ==="
+
+          if ldd nginx 2>&1 | grep -Eq \
+            'not a dynamic executable|statically linked'; then
+            echo "OK: nginx is statically linked"
+          else
+            ldd nginx || true
+            echo "ERROR: nginx is not fully static"
             exit 1
           fi
 
-          if readelf -d nginx-static 2>/dev/null | grep -q "(NEEDED)"; then
-            echo "ERROR: nginx-static contains dynamic library dependencies"
-            readelf -d nginx-static
-            exit 1
-          fi
+          echo
+          echo "=== required modules ==="
 
-          sha256sum nginx-static > nginx-static.sha256
+          ./nginx -V 2>&1 | grep -q -- \
+            '--with-http_json_module'
 
-          cat nginx-static.sha256
+          ./nginx -V 2>&1 | grep -q -- \
+            '--with-http_slice_module'
 
-      - name: Upload artifact
+          ./nginx -V 2>&1 | grep -q -- \
+            '--with-http_ssl_module'
+
+          ./nginx -V 2>&1 | grep -q -- \
+            '--with-http_v2_module'
+
+          ./nginx -V 2>&1 | grep -q -- \
+            '--with-http_v3_module'
+
+          echo "OK: required modules enabled"
+
+      - name: Upload nginx
         uses: actions/upload-artifact@v4
         with:
-          name: nginx-static
-          path: |
-            nginx-static
-            nginx-static.sha256
-            NGINX_VERSION
+          name: nginx
+          path: nginx
           if-no-files-found: error
-          compression-level: 9
+          compression-level: 0
