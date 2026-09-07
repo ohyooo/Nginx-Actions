@@ -178,7 +178,7 @@ jobs:
           echo "OK: required modules enabled"
 
       - name: Upload nginx
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nginx
           path: nginx
