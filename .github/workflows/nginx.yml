@@ -184,3 +184,4 @@ jobs:
           path: nginx
           if-no-files-found: error
           compression-level: 0
+          archive: false
