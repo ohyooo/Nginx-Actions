@@ -334,6 +334,7 @@ log "configure nginx"
   --user=nobody \
   --group=nobody \
   --with-compat \
+  --with-control-api \
   --with-file-aio \
   --with-threads \
   --with-http_addition_module \
