@@ -61,9 +61,8 @@ jobs:
         run: |
           set -eux
 
-          test -x nginx-static
+          test -x nginx
 
-          mv nginx-static nginx
           chmod 0755 nginx
 
           ./nginx -V
