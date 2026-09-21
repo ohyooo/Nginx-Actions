@@ -2,84 +2,129 @@ name: Nginx Static CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: workflow-ci-${{ github.ref }}
+  group: nginx-static-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  ALPINE_VERSION: "3.24"
+  CCACHE_MAXSIZE: 2G
 
 jobs:
   build:
-    name: Build nginx
-    runs-on: ubuntu-latest
-
-    container:
-      image: alpine:latest
-
+    name: Build static nginx
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_MAXSIZE: 1G
 
     steps:
-      # GitHub JavaScript Actions 在 Alpine/musl 容器中运行所需的基础环境。
-      # build_static.sh 会自行安装完整编译依赖。
-      - name: Prepare container
-        run: |
-          apk add --no-cache \
-            bash \
-            git \
-            ca-certificates \
-            gcompat \
-            libstdc++ \
-            tar \
-            zstd
-
       - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Cache ccache
-        uses: actions/cache@v6
+        uses: actions/checkout@v4
         with:
-          path: .ccache
-          key: ccache-${{ runner.os }}-alpine-${{ hashFiles('NGINX_VERSION', 'build_static.sh') }}
+          persist-credentials: false
+
+      - name: Check inputs
+        run: |
+          set -Eeuo pipefail
+          test -f build_static.sh
+          test -f NGINX_VERSION
+          bash -n build_static.sh
+          version="$(tr -d '[:space:]' < NGINX_VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+
+      # restore 不会像 actions/cache 那样在 job 结束时再次自动保存。
+      - name: Restore ccache
+        id: ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: nginx-static-v2-${{ runner.arch }}-alpine${{ env.ALPINE_VERSION }}-${{ hashFiles('build_static.sh', 'NGINX_VERSION', '.github/workflows/nginx.yml') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ccache-${{ runner.os }}-alpine-
+            nginx-static-v2-${{ runner.arch }}-alpine${{ env.ALPINE_VERSION }}-${{ hashFiles('build_static.sh', 'NGINX_VERSION', '.github/workflows/nginx.yml') }}-
+            nginx-static-v2-${{ runner.arch }}-alpine${{ env.ALPINE_VERSION }}-
 
-      - name: Build nginx
+      - name: Build in Alpine
         run: |
-          bash ./build_static.sh
+          set -Eeuo pipefail
+          mkdir -p "$CCACHE_DIR"
+          # 容器内 root 写入挂载目录；失败时也还原缓存及产物所有权。
+          restore_owner() {
+            sudo chown -R "$(id -u):$(id -g)" "$CCACHE_DIR"
+            for artifact in nginx nginx.sha256 nginx.build-info.txt; do
+              if [[ -f "$artifact" ]]; then
+                sudo chown "$(id -u):$(id -g)" "$artifact"
+              fi
+            done
+          }
+          trap restore_owner EXIT
+          # 源码位于容器可写层，随 --rm 清理，不占用额外 tmpfs 内存。
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w /work \
+            -e CCACHE_DIR=/work/.ccache \
+            -e CCACHE_BASEDIR=/work \
+            -e CCACHE_MAXSIZE \
+            -e SRC_DIR=/tmp/nginx-src \
+            "alpine:${ALPINE_VERSION}" \
+            sh -ec '
+              apk add --no-cache bash
+              exec bash ./build_static.sh
+            '
 
-      - name: Prepare artifact
+      - name: Verify static executable
         run: |
-          set -eux
-
+          set -Eeuo pipefail
           test -x nginx
-
-          chmod 0755 nginx
-
-          ./nginx -V
-
-          echo
-          echo "=== file ==="
+          test -s nginx.build-info.txt
+          sha256sum -c nginx.sha256
+          headers="$(readelf -lW nginx)"
+          dynamic="$(readelf -dW nginx)"
+          if grep -Eq '^[[:space:]]*INTERP[[:space:]]' <<< "$headers"; then
+            echo 'ERROR: executable contains PT_INTERP' >&2
+            exit 1
+          fi
+          if [[ "$dynamic" == *'(NEEDED)'* ]]; then
+            echo 'ERROR: executable contains DT_NEEDED' >&2
+            exit 1
+          fi
           file nginx
+          ./nginx -V
+          # scratch 中没有 musl/glibc 或其它运行库，实际执行 -V 验证。
+          smoke_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$smoke_dir"' EXIT
+          cp nginx "$smoke_dir/nginx"
+          printf '%s\n' 'FROM scratch' 'COPY nginx /nginx' \
+            'ENTRYPOINT ["/nginx"]' > "$smoke_dir/Dockerfile"
+          docker build --tag nginx-static-smoke "$smoke_dir"
+          docker run --rm nginx-static-smoke -V
 
-          echo
-          echo "=== sha256 ==="
-          sha256sum nginx
-
-      - name: Upload nginx
-        uses: actions/upload-artifact@v7
+      - name: Save ccache
+        # 失败的编译也可能产生有效缓存；取消任务时不再上传。
+        if: ${{ !cancelled() && steps.ccache.outcome == 'success' }}
+        uses: actions/cache/save@v4
         with:
-          name: nginx
-          path: nginx
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nginx-static-${{ runner.arch }}
+          path: |
+            nginx
+            nginx.sha256
+            nginx.build-info.txt
+            NGINX_VERSION
           if-no-files-found: error
-          compression-level: 0
-          archive: false
