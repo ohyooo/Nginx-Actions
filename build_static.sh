@@ -122,7 +122,15 @@ prepare_cmake_build() {
 log "prepare nginx $NGINX_VERSION"
 download_nginx
 cd "$NGINX_SRC_DIR"
-CONFIGURE_HELP="$(./configure --help)"
+# nginx 的 auto/options 在正常输出帮助后也会 exit 1。
+# 在条件上下文接收状态，避免 set -e / ERR trap 把帮助输出当成构建失败。
+CONFIGURE_HELP_STATUS=0
+CONFIGURE_HELP="$(./configure --help 2>&1)" || CONFIGURE_HELP_STATUS=$?
+if (( CONFIGURE_HELP_STATUS > 1 )) ||
+   [[ "$CONFIGURE_HELP" != *'--help'* || "$CONFIGURE_HELP" != *'--prefix=PATH'* ]]; then
+  printf '%s\n' "$CONFIGURE_HELP" >&2
+  fail "cannot read nginx configure help (exit $CONFIGURE_HELP_STATUS)"
+fi
 # 不静默删除用户要求的功能；版本不支持时在编译依赖之前报错。
 for option in --with-control-api --with-http_json_module --with-http_v3_module; do
   [[ "$CONFIGURE_HELP" = *"$option"* ]] || fail "nginx $NGINX_VERSION does not support $option"
