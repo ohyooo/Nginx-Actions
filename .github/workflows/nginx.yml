@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -71,7 +71,7 @@ jobs:
       # restore 不会像 actions/cache 那样在 job 结束时再次自动保存。
       - name: Restore ccache
         id: ccache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.CCACHE_DIR }}
           key: nginx-static-v2-${{ runner.arch }}-alpine${{ env.ALPINE_VERSION }}-${{ hashFiles('build_static.sh', 'NGINX_VERSION', '.github/workflows/nginx.yml') }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -137,13 +137,13 @@ jobs:
       - name: Save ccache
         # 失败的编译也可能产生有效缓存；取消任务时不再上传。
         if: ${{ !cancelled() && steps.ccache.outcome == 'success' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.ccache.outputs.cache-primary-key }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nginx-static-${{ runner.arch }}
           path: |
