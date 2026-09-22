@@ -41,6 +41,30 @@ jobs:
           test -f build_static.sh
           test -f NGINX_VERSION
           bash -n build_static.sh
+          # bash -n 只能检查语法，截断后仍可能合法；额外检查开头、初始化和结尾。
+          IFS= read -r first_line < build_static.sh
+          if [[ "$first_line" != '#!/usr/bin/env bash' ]]; then
+            echo 'ERROR: build_static.sh is incomplete: missing Bash header. Replace the entire file.' >&2
+            exit 1
+          fi
+          for required in \
+            'set -Eeuo pipefail' \
+            'OUTPUT_NAME=nginx' \
+            'log() {' \
+            'fail() {' \
+            'download_nginx() {' \
+            'clone_module() {' \
+            'prepare_cmake_build() {' \
+            'log "install build dependencies"' \
+            'log "done: $FINAL_BIN"'
+          do
+            if ! grep -Fq -- "$required" build_static.sh; then
+              printf 'ERROR: build_static.sh is incomplete: missing %s. Replace the entire file.\n' "$required" >&2
+              exit 1
+            fi
+          done
+          wc -l build_static.sh
+          sha256sum build_static.sh
           version="$(tr -d '[:space:]' < NGINX_VERSION)"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 
@@ -80,7 +104,7 @@ jobs:
             "alpine:${ALPINE_VERSION}" \
             sh -ec '
               apk add --no-cache bash
-              exec bash ./build_static.sh
+              exec bash -Eeuo pipefail ./build_static.sh
             '
 
       - name: Verify static executable
