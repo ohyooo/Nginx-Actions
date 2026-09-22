@@ -165,11 +165,15 @@ for archive in libbrotlienc.a libbrotlicommon.a; do
 done
 
 log "prepare PCRE2 and zlib"
-# nginx 会自行配置这两个源码库；清理旧配置，ccache 仍可复用编译结果。
-for dir in pcre2 zlib; do
-  if [[ -f "$dir/Makefile" ]]; then make -C "$dir" distclean; fi
-done
+# PCRE2 的 Makefile 由 configure 生成；仅在已有配置时清理。
+if [[ -f pcre2/Makefile ]]; then make -C pcre2 distclean; fi
 [[ -f pcre2/configure ]] || (cd pcre2 && ./autogen.sh)
+
+# Cloudflare zlib 的全新 Git checkout 可能没有 Makefile。
+# nginx 的构建规则却会先调用 make distclean，再运行 ./configure。
+# 显式使用上游 Makefile.in 清理；该目标还会生成带 distclean 的引导 Makefile。
+[[ -f zlib/Makefile.in ]] || fail "missing zlib/Makefile.in"
+make -C zlib -f Makefile.in distclean
 
 log "build BoringSSL"
 BORINGSSL_DIR="$MODULES_DIR/boringssl"
